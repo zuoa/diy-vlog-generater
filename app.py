@@ -158,7 +158,7 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
         TaskStatus.update_task_status(task_id, progress=80, message="正在生成最终文件...")
 
         output_filename = f"mbz_processed_video_{task_id}.mp4"
-        output_filepath = f"output/{output_filename}"
+        output_filepath = f"{OUTPUT_DIR}/{output_filename}"
 
         processor.create_pip_video(video0_path, video1_path, output_filepath, score, 100, (20, 20))
 
