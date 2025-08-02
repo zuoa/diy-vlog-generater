@@ -37,7 +37,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 executor = ThreadPoolExecutor(max_workers=4)
 
 
-def process_videos_background(task_id: str, video1_path: str, video2_path: str):
+def process_videos_background(task_id: str, video1_path: str, video2_path: str, beat_times: list = None):
     """后台处理两个视频的函数"""
     try:
         # 更新任务状态为处理中
@@ -51,7 +51,8 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
         video_url = f"/output/{output_filename}"
 
         TaskStatus.update_task_status(task_id, progress=40, message="正在分析视频...")
-        beat_times = [1.0, 2, 4, 5, 8, 10]
+        if beat_times is None:
+            beat_times = [1, 2, 3, 4, 5, 6]
         processor.create_beat_video(
             video1_path=video1_path,
             video2_path=video2_path,
@@ -218,6 +219,8 @@ def process_videos_web():
     if 'video1' not in request.files or 'video2' not in request.files:
         abort(400, "缺少视频文件")
 
+    beat_times = request.form.get('times')
+
     video1 = request.files['video1']
     video2 = request.files['video2']
 
@@ -251,7 +254,7 @@ def process_videos_web():
     status_url = f"{APP_HOST}/status/{task_id}"
 
     # 启动后台任务
-    executor.submit(process_videos_background, task_id, video1_path, video2_path)
+    executor.submit(process_videos_background, task_id, video1_path, video2_path, beat_times)
 
     task_data = TaskStatus.get_task_status(task_id)
     return success({
