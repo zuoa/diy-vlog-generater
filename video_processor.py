@@ -1,7 +1,13 @@
+import math
 import numpy as np
 import moviepy as mp
 from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
 import os
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+    print("警告: cv2未安装，缩放效果将使用回退方案")
 
 
 class VideoProcessor:
@@ -114,24 +120,152 @@ class VideoProcessor:
         return beat_clips
 
     def _add_simple_zoom_effect(self, clip):
-        """添加简单的缩放效果（不使用fl方法）"""
+        """使用 MoviePy 2.x 的 transform 方法添加动态缩放效果"""
         try:
-            # 创建一个稍微放大的版本，然后调整回原尺寸
-            # 这会产生一个微妙的缩放效果
-            enlarged_size = (int(self.output_size[0] * 1.1), int(self.output_size[1] * 1.1))
-
-            if hasattr(clip, 'resized'):
-                # 先放大
-                enlarged_clip = clip.resized(enlarged_size)
-                # 再调整回原尺寸（会有裁剪效果）
-                zoom_clip = enlarged_clip.resized(self.output_size)
+            # 使用 transform 方法来实现基于时间的动态缩放 (MoviePy 2.x 正确 API)
+            if hasattr(clip, 'transform') and cv2 is not None:
+                def dynamic_zoom(get_frame, t):
+                    """基于时间的动态缩放函数"""
+                    frame = get_frame(t)
+                    h, w = frame.shape[:2]
+                    
+                    # 根据时间计算动态缩放比例
+                    # 从1.0逐渐放大到1.05，然后回到1.0，形成一个缩放循环
+                    duration = clip.duration if hasattr(clip, 'duration') and clip.duration else self.beat_frame_duration
+                    progress = (t % duration) / duration  # 获取当前时间在片段中的进度 (0-1)
+                    
+                    # 使用正弦波形实现平滑的缩放动画：从1.0到1.05再回到1.0
+                    scale = 1.0 + 0.05 * math.sin(progress * 2 * math.pi)
+                    
+                    new_h, new_w = int(h * scale), int(w * scale)
+                    
+                    # 放大图像
+                    resized_frame = cv2.resize(frame, (new_w, new_h))
+                    
+                    # 从中心裁剪回原始大小
+                    start_x = (new_w - w) // 2
+                    start_y = (new_h - h) // 2
+                    cropped_frame = resized_frame[start_y:start_y+h, start_x:start_x+w]
+                    
+                    return cropped_frame
+                
+                print("使用 MoviePy 2.x transform 方法添加动态缩放效果")
+                zoom_clip = clip.transform(dynamic_zoom)
+                return zoom_clip
+            
+            # 回退：尝试使用基于PIL的动态缩放 (如果cv2不可用但有PIL)
+            elif hasattr(clip, 'transform') and cv2 is None:
+                try:
+                    from PIL import Image
+                    import numpy as np
+                    
+                    def pil_dynamic_zoom(get_frame, t):
+                        """使用PIL的基于时间的动态缩放函数"""
+                        frame = get_frame(t)
+                        img = Image.fromarray(frame)
+                        base_size = img.size
+                        
+                        # 根据时间计算动态缩放比例
+                        duration = clip.duration if hasattr(clip, 'duration') and clip.duration else self.beat_frame_duration
+                        progress = (t % duration) / duration
+                        
+                        # 使用正弦波形实现平滑的缩放动画
+                        zoom_ratio = 0.05 * math.sin(progress * 2 * math.pi)
+                        scale = 1.0 + zoom_ratio
+                        
+                        new_size = [
+                            math.ceil(img.size[0] * scale),
+                            math.ceil(img.size[1] * scale)
+                        ]
+                        
+                        # 确保新尺寸是偶数
+                        new_size[0] = new_size[0] + (new_size[0] % 2)
+                        new_size[1] = new_size[1] + (new_size[1] % 2)
+                        
+                        # 调整图像大小
+                        img = img.resize(new_size, Image.LANCZOS)
+                        
+                        # 裁剪到原始大小
+                        x = math.ceil((new_size[0] - base_size[0]) / 2)
+                        y = math.ceil((new_size[1] - base_size[1]) / 2)
+                        
+                        img = img.crop([
+                            x, y, new_size[0] - x, new_size[1] - y
+                        ]).resize(base_size, Image.LANCZOS)
+                        
+                        result = np.array(img)
+                        img.close()
+                        return result
+                    
+                    print("使用PIL实现动态缩放效果")
+                    zoom_clip = clip.transform(pil_dynamic_zoom)
+                    return zoom_clip
+                    
+                except ImportError:
+                    print("PIL不可用，跳过PIL动态缩放方案")
+                    pass
+            
+            # 回退：使用 image_transform 方法 (MoviePy 2.x 的正确 API) - 静态缩放
+            if hasattr(clip, 'image_transform') and cv2 is not None:
+                def zoom_function(frame):
+                    """对每一帧应用缩放效果"""
+                    h, w = frame.shape[:2]
+                    scale = 1.03  # 轻微放大3%
+                    new_h, new_w = int(h * scale), int(w * scale)
+                    
+                    # 放大图像
+                    resized_frame = cv2.resize(frame, (new_w, new_h))
+                    
+                    # 从中心裁剪回原始大小
+                    start_x = (new_w - w) // 2
+                    start_y = (new_h - h) // 2
+                    cropped_frame = resized_frame[start_y:start_y+h, start_x:start_x+w]
+                    
+                    return cropped_frame
+                
+                print("使用 image_transform 方法添加静态缩放效果")
+                zoom_clip = clip.image_transform(zoom_function)
+                return zoom_clip
+            
+            # 回退到 fl_image 方法（如果存在）
+            elif hasattr(clip, 'fl_image') and cv2 is not None:
+                def static_zoom_function(frame):
+                    """静态缩放函数"""
+                    h, w = frame.shape[:2]
+                    scale = 1.03  # 轻微放大3%
+                    new_h, new_w = int(h * scale), int(w * scale)
+                    
+                    resized_frame = cv2.resize(frame, (new_w, new_h))
+                    start_x = (new_w - w) // 2
+                    start_y = (new_h - h) // 2
+                    cropped_frame = resized_frame[start_y:start_y+h, start_x:start_x+w]
+                    return cropped_frame
+                
+                print("使用 fl_image 方法添加缩放效果")
+                zoom_clip = clip.fl_image(static_zoom_function)
+                return zoom_clip
+            
+            # 最终回退到基本 resize 方法
+            elif hasattr(clip, 'resized') or hasattr(clip, 'resize'):
+                print("使用基础 resize 方法添加缩放效果")
+                scale = 1.03
+                enlarged_size = (int(self.output_size[0] * scale), int(self.output_size[1] * scale))
+                
+                if hasattr(clip, 'resized'):
+                    enlarged_clip = clip.resized(enlarged_size)
+                    zoom_clip = enlarged_clip.resized(self.output_size)
+                else:
+                    enlarged_clip = clip.resize(enlarged_size)
+                    zoom_clip = enlarged_clip.resize(self.output_size)
+                
+                return zoom_clip
+            
             else:
-                enlarged_clip = clip.resize(enlarged_size)
-                zoom_clip = enlarged_clip.resize(self.output_size)
-
-            return zoom_clip
+                print("无法应用任何缩放效果，返回原始片段")
+                return clip
+                
         except Exception as e:
-            print(f"添加缩放效果失败: {e}")
+            print(f"缩放效果失败: {e}")
             return clip
 
     def _add_timer_to_video(self, video, speed_factor, font_size):
