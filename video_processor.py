@@ -1,13 +1,22 @@
 import math
 import numpy as np
 import moviepy as mp
-from moviepy import VideoFileClip, TextClip, CompositeVideoClip, concatenate_videoclips
+from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, concatenate_audioclips
 import os
+import subprocess
+from pathlib import Path
 try:
     import cv2
 except ImportError:
     cv2 = None
     print("警告: cv2未安装，缩放效果将使用回退方案")
+
+# 设置 MoviePy 配置以避免 ffmpeg 问题
+try:
+    from moviepy.config import check_ffmpeg
+    print("MoviePy ffmpeg 检查:", check_ffmpeg())
+except ImportError:
+    print("无法导入 MoviePy 配置检查")
 
 
 class VideoProcessor:
@@ -20,10 +29,27 @@ class VideoProcessor:
         self.output_size = (1920, 1080)  # 输出视频尺寸
         self.transition_duration = 0.5  # 转场时长
         self.beat_frame_duration = 1.0  # 每个卡点帧显示时长（增加到1秒）
+        self._check_ffmpeg_availability()
+    
+    def _check_ffmpeg_availability(self):
+        """检查 ffmpeg 是否可用"""
+        try:
+            result = subprocess.run(['ffmpeg', '-version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                print("✓ FFmpeg 可用")
+                return True
+            else:
+                print("⚠ FFmpeg 不可用 - 可能会遇到视频处理问题")
+                return False
+        except Exception as e:
+            print(f"⚠ 无法检查 FFmpeg: {e}")
+            print("如果遇到视频处理问题，请确保已安装 FFmpeg")
+            return False
 
     def create_beat_video(self, video1_path, video2_path, beat_times,
                           output_path="output_beat_video.mp4",
-                          speed_factor=1.5, font_size=60):
+                          speed_factor=1.5, font_size=60, background_music_path=None):
         """
         创建卡点视频
 
@@ -34,6 +60,7 @@ class VideoProcessor:
         - output_path: 输出文件路径
         - speed_factor: 第二个视频的播放速度倍数
         - font_size: 时间显示字体大小
+        - background_music_path: 背景音乐文件路径（可选，默认使用jiggy boogy.mp3）
         """
         try:
             # 加载视频
@@ -49,23 +76,58 @@ class VideoProcessor:
             # 组合所有片段
             final_video = self._combine_clips(beat_clips, video2_with_timer)
 
-            # 输出视频
-            final_video.write_videofile(
-                output_path,
-                fps=24,
-                codec='libx264',
-                audio_codec='aac'
-            )
+            # 先保存没有音频的视频
+            temp_video_path = output_path.replace('.mp4', '_temp_no_audio.mp4')
+            try:
+                print("写入临时视频（无音频）...")
+                final_video.write_videofile(
+                    temp_video_path,
+                    logger=None,
+                    audio=False  # 明确禁用音频
+                )
+                print("临时视频写入成功!")
+            except Exception as write_error:
+                print(f"临时视频写入失败: {write_error}")
+                raise
+            
+            # 使用 FFmpeg 添加背景音乐
+            success = self._add_music_with_ffmpeg(temp_video_path, output_path, background_music_path)
+            
+            # 清理临时文件
+            try:
+                if os.path.exists(temp_video_path):
+                    os.remove(temp_video_path)
+            except:
+                pass
+            
+            if not success:
+                # 如果音频添加失败，至少我们有无音频的视频
+                print("音频添加失败，保留无音频版本")
+                if os.path.exists(temp_video_path):
+                    os.rename(temp_video_path, output_path)
 
             # 清理资源
-            video1.close()
-            video2.close()
-            final_video.close()
+            try:
+                video1.close()
+                video2.close()
+                final_video.close()
+            except Exception as cleanup_error:
+                print(f"清理资源时出错: {cleanup_error}")
 
             print(f"视频处理完成，保存至: {output_path}")
 
         except Exception as e:
             print(f"视频处理出错: {str(e)}")
+            # 确保在出错时也能清理资源
+            try:
+                if 'video1' in locals():
+                    video1.close()
+                if 'video2' in locals():
+                    video2.close()
+                if 'final_video' in locals():
+                    final_video.close()
+            except:
+                pass
             raise
 
     def _create_beat_clips(self, video, beat_times):
@@ -454,6 +516,191 @@ class VideoProcessor:
             print(f"修复后成功连接，最终视频长度: {final_video.duration:.2f}s")
             return final_video
 
+    def _add_background_music(self, video_clip, music_path=None):
+        """
+        为视频添加背景音乐
+        
+        参数:
+        - video_clip: 视频剪辑对象
+        - music_path: 音乐文件路径（可选，默认使用jiggy boogy.mp3）
+        
+        返回:
+        - 添加了背景音乐的视频剪辑
+        """
+        try:
+            # 确定音乐文件路径
+            if music_path is None:
+                music_path = str(Path(__file__).parent / "jiggy boogy.mp3")
+            
+            if not os.path.exists(music_path):
+                print(f"警告: 背景音乐文件不存在: {music_path}")
+                return video_clip
+            
+            print(f"添加背景音乐: {music_path}")
+            
+            # 加载背景音乐
+            audio_clip = AudioFileClip(music_path)
+            
+            # 如果音频比视频短，循环播放音频
+            if audio_clip.duration < video_clip.duration:
+                print(f"音频时长 {audio_clip.duration:.2f}s 短于视频时长 {video_clip.duration:.2f}s，需要循环播放")
+                # 计算需要循环的次数
+                loops = int(video_clip.duration / audio_clip.duration) + 1
+                # 创建循环音频片段
+                looped_clips = []
+                for i in range(loops):
+                    # 创建音频的独立副本
+                    clip_copy = audio_clip.subclipped(0, audio_clip.duration)
+                    looped_clips.append(clip_copy)
+                
+                try:
+                    audio_clip = concatenate_audioclips(looped_clips)
+                except Exception as concat_error:
+                    print(f"音频拼接失败，使用备用方法: {concat_error}")
+                    # 使用音频自身的loop功能
+                    audio_clip = audio_clip.loop(duration=video_clip.duration)
+                
+                # 截取到确切的视频长度
+                audio_clip = audio_clip.subclipped(0, video_clip.duration)
+                
+                # 清理临时片段
+                for clip in looped_clips:
+                    try:
+                        clip.close()
+                    except:
+                        pass
+            else:
+                # 如果音频比视频长，截取音频
+                print(f"音频时长 {audio_clip.duration:.2f}s 长于视频时长 {video_clip.duration:.2f}s，截取音频")
+                audio_clip = audio_clip.subclipped(0, video_clip.duration)
+            
+            # 将背景音乐添加到视频中
+            try:
+                final_clip = video_clip.with_audio(audio_clip)
+                print("成功添加背景音乐")
+                
+                # 清理音频资源
+                audio_clip.close()
+                
+                return final_clip
+            except Exception as audio_error:
+                print(f"合并音频到视频时出错: {audio_error}")
+                # 清理音频资源
+                try:
+                    audio_clip.close()
+                except:
+                    pass
+                # 返回原始视频
+                return video_clip
+            
+        except Exception as e:
+            print(f"添加背景音乐失败: {str(e)}")
+            print("返回原始视频（不含背景音乐）")
+            return video_clip
+
+    def _add_background_music_simple(self, video_clip, music_path=None):
+        """
+        简化版背景音乐添加功能
+        
+        参数:
+        - video_clip: 视频剪辑对象
+        - music_path: 音乐文件路径（可选，默认使用jiggy boogy.mp3）
+        
+        返回:
+        - 添加了背景音乐的视频剪辑或原始视频剪辑
+        """
+        try:
+            # 确定音乐文件路径
+            if music_path is None:
+                music_path = str(Path(__file__).parent / "jiggy boogy.mp3")
+            
+            if not os.path.exists(music_path):
+                print(f"警告: 背景音乐文件不存在: {music_path}")
+                return video_clip
+            
+            print(f"添加背景音乐: {music_path}")
+            
+            # 加载背景音乐
+            audio_clip = AudioFileClip(music_path)
+            
+            # 简单处理：只截取，避免循环操作
+            if audio_clip.duration >= video_clip.duration:
+                print(f"截取音频: {audio_clip.duration:.2f}s -> {video_clip.duration:.2f}s") 
+                audio_clip = audio_clip.subclipped(0, video_clip.duration)
+            else:
+                print(f"音频较短: {audio_clip.duration:.2f}s < {video_clip.duration:.2f}s，直接使用")
+                # 如果音频较短，就只使用现有的音频长度，不循环
+            
+            # 将背景音乐添加到视频中
+            final_clip = video_clip.with_audio(audio_clip)
+            print("成功添加背景音乐")
+            
+            # 清理音频资源
+            audio_clip.close()
+            
+            return final_clip
+            
+        except Exception as e:
+            print(f"添加背景音乐失败: {str(e)}")
+            print("返回原始视频（不含背景音乐）")
+            return video_clip
+
+    def _add_music_with_ffmpeg(self, video_path, output_path, music_path=None):
+        """
+        使用 FFmpeg 直接添加背景音乐到视频
+        
+        参数:
+        - video_path: 输入视频路径
+        - output_path: 输出视频路径
+        - music_path: 音乐文件路径（可选）
+        
+        返回:
+        - bool: 成功返回 True，失败返回 False
+        """
+        try:
+            # 确定音乐文件路径
+            if music_path is None:
+                music_path = str(Path(__file__).parent / "jiggy boogy.mp3")
+            
+            if not os.path.exists(music_path):
+                print(f"警告: 背景音乐文件不存在: {music_path}")
+                return False
+            
+            print(f"使用 FFmpeg 添加背景音乐: {music_path}")
+            
+            # 构建 FFmpeg 命令
+            cmd = [
+                'ffmpeg',
+                '-i', video_path,        # 输入视频
+                '-i', music_path,        # 输入音频
+                '-c:v', 'copy',          # 复制视频流（不重新编码）
+                '-c:a', 'aac',           # 音频编码为 AAC
+                '-map', '0:v:0',         # 使用第一个文件的视频流
+                '-map', '1:a:0',         # 使用第二个文件的音频流
+                '-shortest',             # 使用最短的流长度
+                '-y',                    # 覆盖输出文件
+                output_path
+            ]
+            
+            print(f"FFmpeg 命令: {' '.join(cmd)}")
+            
+            # 执行 FFmpeg 命令
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode == 0:
+                print("FFmpeg 添加音频成功!")
+                return True
+            else:
+                print(f"FFmpeg 错误: {result.stderr}")
+                return False
+                
+        except subprocess.TimeoutExpired:
+            print("FFmpeg 超时")
+            return False
+        except Exception as e:
+            print(f"FFmpeg 添加音频失败: {str(e)}")
+            return False
+
     def preview_beat_points(self, video_path, beat_times, preview_duration=2.0):
         """预览卡点时间点 (用于调试)"""
         video = VideoFileClip(video_path)
@@ -491,6 +738,7 @@ if __name__ == "__main__":
         video2_path=video2_path,
         beat_times=beat_times,
         output_path="final_beat_video.mp4",
-        speed_factor=1.5,  # 第二个视频1.5倍速播放
-        font_size=60  # 时间显示字体大小
+        speed_factor=5,  # 第二个视频1.5倍速播放
+        font_size=120,  # 时间显示字体大小
+        background_music_path="jiggy boogy.mp3"  # 使用默认背景音乐 jiggy boogy.mp3，或指定其他音乐文件路径
     )
