@@ -49,6 +49,60 @@ class VideoProcessor:
             print(f"⚠ 无法检查 FFmpeg: {e}")
             print("如果遇到视频处理问题，请确保已安装 FFmpeg")
             return False
+    def create_pip_video(self, main_video_path, pip_video_path, output_path, text=None, text_font_size=16, text_position=(0, 0), pip_position='top-right', pip_scale=0.25):
+        """
+        创建画中画视频
+
+        参数:
+        - main_video_path: 主视频路径
+        - pip_video_path: 画中画视频路径
+        - output_path: 输出文件路径
+        - text: 要显示的文本（可选）
+        - text_font_size: 文本字体大小
+        - text_position: 文本位置 (x, y)
+        - pip_position: 画中画视频位置 ('top-right', 'top-left', 'bottom-right', 'bottom-left')
+        - pip_scale: 画中画视频缩放比例
+        """
+        try:
+            # 加载主视频和画中画视频
+            main_video = VideoFileClip(main_video_path).resized(self.output_size)
+            pip_video = VideoFileClip(pip_video_path).resized(self.output_size)
+
+            # 创建画中画效果
+            pip_clip = self.create_picture_in_picture(
+                main_clip=main_video,
+                pip_clip=pip_video,
+                pip_position=pip_position,
+                pip_scale=pip_scale,
+                pip_start_time=0,
+                pip_duration=pip_video.duration
+            )
+
+            # 添加文本（如果有）
+            if text:
+                from moviepy.video.tools.drawing import TextClip
+                text_clip = TextClip(
+                    text=text,
+                    font_size=text_font_size,
+                    color='white'
+                ).set_duration(pip_clip.duration).set_position(text_position)
+                final_clip = CompositeVideoClip([pip_clip, text_clip])
+            else:
+                final_clip = pip_clip
+
+            # 保存最终视频
+            final_clip.write_videofile(output_path, logger=None)
+            print(f"视频处理完成，保存至: {output_path}")
+
+            # 清理资源
+            main_video.close()
+            pip_video.close()
+            final_clip.close()
+
+        except Exception as e:
+            print(f"视频处理出错: {str(e)}")
+
+
 
     def create_beat_video(self, video1_path, video2_path, beat_times,
                           output_path="output_beat_video.mp4",
@@ -70,10 +124,12 @@ class VideoProcessor:
             video1 = VideoFileClip(video1_path).resized(self.output_size)
             video2 = VideoFileClip(video2_path).resized(self.output_size)
 
+            min_duration = min(video1.duration, video2.duration)
+
             # 创建卡点片段
             beat_clips = self._create_beat_clips(video1, beat_times)
 
-            left_duration = video1.duration - beat_times[-1]
+            left_duration = min_duration - beat_times[-1]
             seg_duration = int(left_duration / 4)
             main_clips = []
             for i in range(0, seg_duration + 1):
@@ -1514,143 +1570,145 @@ if __name__ == "__main__":
     processor = VideoProcessor()
 
     # 示例1：创建卡点视频
-    if False:  # 设置为True启用卡点视频示例
+    if True:  # 设置为True启用卡点视频示例
         # 定义参数
-        video1_path = "/Users/yujian/Downloads/video0_20250731_161731.mp4"  # 第一个视频路径
-        video2_path = "/Users/yujian/Downloads/video1_20250731_161731.mp4"  # 第二个视频路径
+        video1_path = "/Users/yujian/Downloads/video0_20250802_140017.mp4"  # 第一个视频路径
+        video2_path = "/Users/yujian/Downloads/video1_20250802_140017.mp4"  # 第二个视频路径
         beat_times = [0.0, 4.5, 6.5, 9.8, 19, 23]  # 卡点时间数组 (秒)
+
+        processor.create_pip_video(video1_path, video2_path, "output/121212.mp4", "98", 18, (100,120) )
 
         # 预览卡点 (可选)
         # processor.preview_beat_points(video1_path, beat_times)
 
-        # 处理视频
-        processor.create_beat_video(
-            video1_path=video1_path,
-            video2_path=video2_path,
-            beat_times=beat_times,
-            output_path="final_beat_video.mp4",
-            speed_factor=5,  # 第二个视频1.5倍速播放
-            font_size=120,  # 时间显示字体大小
-            background_music_path="jiggy boogy.mp3"  # 使用默认背景音乐 jiggy boogy.mp3，或指定其他音乐文件路径
-        )
+        # # 处理视频
+        # processor.create_beat_video(
+        #     video1_path=video1_path,
+        #     video2_path=video2_path,
+        #     beat_times=beat_times,
+        #     output_path="final_beat_video.mp4",
+        #     speed_factor=5,  # 第二个视频1.5倍速播放
+        #     font_size=120,  # 时间显示字体大小
+        #     background_music_path="jiggy boogy.mp3"  # 使用默认背景音乐 jiggy boogy.mp3，或指定其他音乐文件路径
+        # )
 
-    # 示例2：创建基础画中画视频
-    if True:  # 设置为True启用画中画示例
-        try:
-            # 加载两个视频clip
-            main_video = VideoFileClip("video1.mp4")  # 主视频（背景）
-            pip_video = VideoFileClip("video2.mp4")  # 画中画视频（前景小窗口）
-
-            # 创建基础画中画效果
-            pip_result = processor.create_picture_in_picture(
-                main_clip=main_video,
-                pip_clip=pip_video,
-                pip_position='bottom-right',  # 画中画位置：右下角
-                pip_scale=0.3,  # 画中画大小：主视频的30%
-                pip_opacity=0.9,  # 画中画透明度：90%
-                margin=30,  # 距离边缘30像素
-                pip_start_time=2.0,  # 画中画在第2秒开始显示
-                pip_duration=10.0  # 画中画显示10秒
-            )
-
-            # 保存画中画视频
-            pip_result.write_videofile("output/pip_video.mp4", logger=None)
-
-            # 清理资源
-            main_video.close()
-            pip_video.close()
-            pip_result.close()
-
-            print("基础画中画视频创建成功！")
-
-        except Exception as e:
-            print(f"基础画中画示例失败: {e}")
-
-    # 示例3：创建高级画中画视频（带动画效果）
-    if False:  # 设置为True启用高级画中画示例
-        try:
-            # 加载两个视频clip
-            main_video = VideoFileClip("video1.mp4")
-            pip_video = VideoFileClip("video2.mp4")
-
-            # 定义动画配置
-            animations = {
-                # 位置动画：画中画从左上角移动到右下角
-                'position_keyframes': [
-                    (0, (50, 50)),  # 第0秒：左上角
-                    (5, (400, 200)),  # 第5秒：中间位置
-                    (10, (1200, 600))  # 第10秒：右下角
-                ],
-                # 缩放动画：画中画大小变化
-                'scale_keyframes': [
-                    (0, 0.2),  # 第0秒：20%大小
-                    (5, 0.4),  # 第5秒：40%大小
-                    (10, 0.25)  # 第10秒：25%大小
-                ]
-            }
-
-            # 创建高级画中画效果
-            advanced_pip_result = processor.create_advanced_picture_in_picture(
-                main_clip=main_video,
-                pip_clip=pip_video,
-                pip_animations=animations,
-                border_width=3,
-                border_color='white',
-                shadow=True
-            )
-
-            # 保存高级画中画视频
-            advanced_pip_result.write_videofile("output/advanced_pip_video.mp4", logger=None)
-
-            # 清理资源
-            main_video.close()
-            pip_video.close()
-            advanced_pip_result.close()
-
-            print("高级画中画视频创建成功！")
-
-        except Exception as e:
-            print(f"高级画中画示例失败: {e}")
-
-    # 示例4：多个不同位置的画中画
-    if False:  # 设置为True启用多画中画示例
-        try:
-            # 加载视频clip
-            main_video = VideoFileClip("video1.mp4")
-            pip_video1 = VideoFileClip("video2.mp4")
-            pip_video2 = VideoFileClip("video3.mp4")
-
-            # 创建第一个画中画（右上角）
-            temp_result = processor.create_picture_in_picture(
-                main_clip=main_video,
-                pip_clip=pip_video1,
-                pip_position='top-right',
-                pip_scale=0.25,
-                pip_start_time=0,
-                pip_duration=8
-            )
-
-            # 在第一个画中画的基础上添加第二个画中画（左下角）
-            final_result = processor.create_picture_in_picture(
-                main_clip=temp_result,
-                pip_clip=pip_video2,
-                pip_position='bottom-left',
-                pip_scale=0.2,
-                pip_start_time=3,
-                pip_duration=6
-            )
-
-            # 保存多画中画视频
-            final_result.write_videofile("output/multi_pip_video.mp4", logger=None)
-
-            # 清理资源
-            main_video.close()
-            pip_video1.close()
-            pip_video2.close()
-            temp_result.close()
-            final_result.close()
-
-            print("多画中画视频创建成功！")
-
-        except Exception as e:
-            print(f"多画中画示例失败: {e}")
+    # # 示例2：创建基础画中画视频
+    # if True:  # 设置为True启用画中画示例
+    #     try:
+    #         # 加载两个视频clip
+    #         main_video = VideoFileClip("video1.mp4")  # 主视频（背景）
+    #         pip_video = VideoFileClip("video2.mp4")  # 画中画视频（前景小窗口）
+    #
+    #         # 创建基础画中画效果
+    #         pip_result = processor.create_picture_in_picture(
+    #             main_clip=main_video,
+    #             pip_clip=pip_video,
+    #             pip_position='bottom-right',  # 画中画位置：右下角
+    #             pip_scale=0.3,  # 画中画大小：主视频的30%
+    #             pip_opacity=0.9,  # 画中画透明度：90%
+    #             margin=30,  # 距离边缘30像素
+    #             pip_start_time=2.0,  # 画中画在第2秒开始显示
+    #             pip_duration=10.0  # 画中画显示10秒
+    #         )
+    #
+    #         # 保存画中画视频
+    #         pip_result.write_videofile("output/pip_video.mp4", logger=None)
+    #
+    #         # 清理资源
+    #         main_video.close()
+    #         pip_video.close()
+    #         pip_result.close()
+    #
+    #         print("基础画中画视频创建成功！")
+    #
+    #     except Exception as e:
+    #         print(f"基础画中画示例失败: {e}")
+    #
+    # # # 示例3：创建高级画中画视频（带动画效果）
+    # # if False:  # 设置为True启用高级画中画示例
+    # #     try:
+    # #         # 加载两个视频clip
+    # #         main_video = VideoFileClip("video1.mp4")
+    # #         pip_video = VideoFileClip("video2.mp4")
+    # #
+    # #         # 定义动画配置
+    # #         animations = {
+    # #             # 位置动画：画中画从左上角移动到右下角
+    # #             'position_keyframes': [
+    # #                 (0, (50, 50)),  # 第0秒：左上角
+    # #                 (5, (400, 200)),  # 第5秒：中间位置
+    # #                 (10, (1200, 600))  # 第10秒：右下角
+    # #             ],
+    # #             # 缩放动画：画中画大小变化
+    # #             'scale_keyframes': [
+    # #                 (0, 0.2),  # 第0秒：20%大小
+    # #                 (5, 0.4),  # 第5秒：40%大小
+    # #                 (10, 0.25)  # 第10秒：25%大小
+    # #             ]
+    # #         }
+    # #
+    # #         # 创建高级画中画效果
+    # #         advanced_pip_result = processor.create_advanced_picture_in_picture(
+    # #             main_clip=main_video,
+    # #             pip_clip=pip_video,
+    # #             pip_animations=animations,
+    # #             border_width=3,
+    # #             border_color='white',
+    # #             shadow=True
+    # #         )
+    # #
+    # #         # 保存高级画中画视频
+    # #         advanced_pip_result.write_videofile("output/advanced_pip_video.mp4", logger=None)
+    # #
+    # #         # 清理资源
+    # #         main_video.close()
+    # #         pip_video.close()
+    # #         advanced_pip_result.close()
+    # #
+    # #         print("高级画中画视频创建成功！")
+    # #
+    # #     except Exception as e:
+    # #         print(f"高级画中画示例失败: {e}")
+    # #
+    # # # 示例4：多个不同位置的画中画
+    # # if False:  # 设置为True启用多画中画示例
+    # #     try:
+    # #         # 加载视频clip
+    # #         main_video = VideoFileClip("video1.mp4")
+    # #         pip_video1 = VideoFileClip("video2.mp4")
+    # #         pip_video2 = VideoFileClip("video3.mp4")
+    # #
+    # #         # 创建第一个画中画（右上角）
+    # #         temp_result = processor.create_picture_in_picture(
+    # #             main_clip=main_video,
+    # #             pip_clip=pip_video1,
+    # #             pip_position='top-right',
+    # #             pip_scale=0.25,
+    # #             pip_start_time=0,
+    # #             pip_duration=8
+    # #         )
+    # #
+    # #         # 在第一个画中画的基础上添加第二个画中画（左下角）
+    # #         final_result = processor.create_picture_in_picture(
+    # #             main_clip=temp_result,
+    # #             pip_clip=pip_video2,
+    # #             pip_position='bottom-left',
+    # #             pip_scale=0.2,
+    # #             pip_start_time=3,
+    # #             pip_duration=6
+    # #         )
+    # #
+    # #         # 保存多画中画视频
+    # #         final_result.write_videofile("output/multi_pip_video.mp4", logger=None)
+    # #
+    # #         # 清理资源
+    # #         main_video.close()
+    # #         pip_video1.close()
+    # #         pip_video2.close()
+    # #         temp_result.close()
+    # #         final_result.close()
+    # #
+    # #         print("多画中画视频创建成功！")
+    # #
+    # #     except Exception as e:
+    # #         print(f"多画中画示例失败: {e}")
