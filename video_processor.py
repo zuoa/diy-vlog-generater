@@ -644,33 +644,39 @@ class VideoProcessor:
         # 创建动态滚动时间显示
         print("创建动态时间显示")
         try:
-            # 方法1：创建多个1秒的时间片段
+            # 方法1：创建多个0.1秒的时间片段以实现毫秒滚动效果
             timer_clips = []
-            video_duration = int(video.duration) + 1
+            video_duration = video.duration
+            time_interval = 0.005  # 100毫秒间隔
 
-            for t in range(video_duration):
+            # 计算需要的时间片段数量
+            num_segments = int(video_duration / time_interval) + 1
+
+            for i in range(num_segments):
+                t = i * time_interval
                 minutes = int(t // 60)
                 seconds = int(t % 60)
-                time_text = f"{minutes:02d}:{seconds:02d}"
+                milliseconds = int((t % 1) * 1000)
+                time_text = f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
-                # 创建1秒的时间显示片段
+                # 创建0.1秒的时间显示片段（半透明效果）
                 timer_segment = TextClip(
                     text=time_text,
                     font_size=font_size,
                     color='white',
                     font='Arial'
-                )
+                ).with_opacity(0.7)  # 设置70%透明度，实现半透明效果
 
-                # 设置持续时间和位置
+                # 设置持续时间和位置（居中显示）
                 if hasattr(timer_segment, 'with_duration'):
-                    timer_segment = timer_segment.with_duration(1.0)
+                    timer_segment = timer_segment.with_duration(time_interval)
                 else:
-                    timer_segment = timer_segment.set_duration(1.0)
+                    timer_segment = timer_segment.set_duration(time_interval)
 
                 if hasattr(timer_segment, 'with_position'):
-                    timer_segment = timer_segment.with_position(('right', 'top'))
+                    timer_segment = timer_segment.with_position('center')
                 else:
-                    timer_segment = timer_segment.set_position(('right', 'top'))
+                    timer_segment = timer_segment.set_position('center')
 
                 timer_clips.append(timer_segment)
 
@@ -706,7 +712,7 @@ class VideoProcessor:
                     font_size=font_size,
                     color='white',
                     font='Arial'
-                )
+                ).with_opacity(0.7)  # 设置70%透明度，实现半透明效果
 
                 if hasattr(timer_clip, 'with_duration'):
                     timer_clip = timer_clip.with_duration(video.duration)
@@ -714,9 +720,9 @@ class VideoProcessor:
                     timer_clip = timer_clip.set_duration(video.duration)
 
                 if hasattr(timer_clip, 'with_position'):
-                    timer_clip = timer_clip.with_position(('right', 'top'))
+                    timer_clip = timer_clip.with_position('center')
                 else:
-                    timer_clip = timer_clip.set_position(('right', 'top'))
+                    timer_clip = timer_clip.set_position('center')
 
                 result = CompositeVideoClip([video, timer_clip])
                 print("使用静态时间显示作为回退方案")
