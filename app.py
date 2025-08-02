@@ -348,8 +348,12 @@ def maobizi_score_web():
     # 启动后台任务
     executor.submit(process_maozibi_score_background, task_id, video0_path, video1_path, score)
 
-    # 重定向到状态页面
-    return redirect(url_for('get_task_status_page', task_id=task_id))
+    task_data = TaskStatus.get_task_status(task_id)
+    return success({
+        "task_id": task_id,
+        "status_url": status_url,
+        "created_at": task_data["created_at"]
+    })
 
 
 @app.route('/process-single-video-web', methods=['POST'])
