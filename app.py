@@ -72,7 +72,7 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
         TaskStatus.update_task_status(task_id, progress=80, message="正在生成最终文件...")
 
         # 生成视频访问URL
-        video_url = f"http://8.215.28.241:721/output/{output_filename}"
+        video_url = f"/output/{output_filename}"
 
         # 更新任务状态为完成
         TaskStatus.update_task_status(task_id,
