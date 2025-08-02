@@ -28,7 +28,7 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 
 
-APP_HOST = os.getenv("APP_HOST", "https://diy.cod.vision")
+APP_HOST = os.getenv("APP_HOST", "http://127.0.0.1:5003")
 
 # 配置目录
 STATIC_DIR = Path(__file__).parent / "static"
@@ -54,7 +54,7 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
         video_url = f"/output/{output_filename}"
 
         TaskStatus.update_task_status(task_id, progress=40, message="正在分析视频...")
-        beat_times = [0.0, 4.5, 6.5, 9.8, 19,23]
+        beat_times = [1.0, 2, 4, 5, 8, 10]
         processor.create_beat_video(
             video1_path=video1_path,
             video2_path=video2_path,

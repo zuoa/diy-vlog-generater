@@ -1,12 +1,13 @@
 version: '3.8'
 
 services:
-  videoprocess:
-    build: .
-    container_name: VideoProcess
-    volumes:
-      - /data/wch/VideoProcess:/data
+  app:
+    image: ghcr.io/zuoa/diy-vlog-generater:main
+    restart: "always"
     ports:
-      - "721:8000"
-    stdin_open: true
-    tty: true
+      - "7082:7082"
+    volumes:
+      - ./data:/data
+    environment:
+      - "TZ=Asia/Shanghai"
+      - "APP_HOST=http://diy.cod.vision"
