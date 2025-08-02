@@ -6,3 +6,8 @@ load_dotenv()
 
 # Database configuration
 DB_PATH = os.getenv('DB_PATH', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app.db'))
+
+
+OUTPUT_DIR = os.getenv('OUTPUT_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output'))
+if not os.path.exists(OUTPUT_DIR):
+    os.makedirs(OUTPUT_DIR)

@@ -14,6 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, request, render_template, redirect, url_for, jsonify, send_file, abort
 
+from config import OUTPUT_DIR
 from database import TaskStatus, create_tables
 from utils import success
 # 导入视频处理相关的类
@@ -29,9 +30,7 @@ APP_HOST = os.getenv("APP_HOST", "http://127.0.0.1:5003")
 
 # 配置目录
 STATIC_DIR = Path(__file__).parent / "static"
-OUTPUT_DIR = Path(__file__).parent / "output"
 STATIC_DIR.mkdir(exist_ok=True)
-OUTPUT_DIR.mkdir(exist_ok=True)
 
 # 线程池执行器用于后台任务
 executor = ThreadPoolExecutor(max_workers=4)
@@ -517,7 +516,7 @@ def health_check():
     del processor
     loop.close()
 
-    return jsonify({
+    return success({
         "status": "healthy",
         "ffmpeg_available": ffmpeg_available,
         "ffmpeg_version": ffmpeg_version,
