@@ -447,10 +447,7 @@ class VideoProcessor:
             raise Exception("video0文件数据为空")
         if not video1_data or len(video1_data) == 0:
             raise Exception("video1文件数据为空")
-        
-        OUTPUT_DIR = Path(__file__).parent / "output"
-        OUTPUT_DIR.mkdir(exist_ok=True)
-        
+
         video0_path = os.path.join(self.temp_dir, f"video0_{unique_id}.mp4")
         video1_path = os.path.join(self.temp_dir, f"video1_{unique_id}.mp4")
         
@@ -511,9 +508,7 @@ class VideoProcessor:
             raise Exception("video1文件数据为空")
         if not score or score.strip() == "":
             raise Exception("score参数不能为空")
-        
-        OUTPUT_DIR = Path(__file__).parent / "output"
-        OUTPUT_DIR.mkdir(exist_ok=True)
+
         
         video0_path = os.path.join(self.temp_dir, f"video0_{unique_id}.mp4")
         video1_path = os.path.join(self.temp_dir, f"video1_{unique_id}.mp4")

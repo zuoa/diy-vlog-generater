@@ -45,7 +45,7 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str, 
         processor = VP()
 
         output_filename = f"processed_video_{task_id}.mp4"
-        output_filepath = f"output/processed_video_{task_id}.mp4"
+        output_filepath = f"{OUTPUT_DIR}/{output_filename}"
         # 生成视频访问URL
         video_url = f"/output/{output_filename}"
 
