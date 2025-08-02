@@ -10,11 +10,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
 
 from dotenv import load_dotenv
 from flask import Flask, request, render_template, redirect, url_for, jsonify, send_file, abort
-from peewee import *
 
 from database import TaskStatus, create_tables
 from utils import success
@@ -26,7 +24,6 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
-
 
 APP_HOST = os.getenv("APP_HOST", "http://127.0.0.1:5003")
 
@@ -65,18 +62,16 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
             background_music_path="jiggy boogy.mp3"  # 使用默认背景音乐 jiggy boogy.mp3，或指定其他音乐文件路径
         )
 
-
         TaskStatus.update_task_status(task_id, progress=80, message="正在生成最终文件...")
-
 
         # 更新任务状态为完成
         TaskStatus.update_task_status(task_id,
-                         status="completed",
-                         message="视频处理完成",
-                         progress=100,
-                         video_filename=output_filename,
-                         video_url=video_url,
-                         completed_at=datetime.now())
+                                      status="completed",
+                                      message="视频处理完成",
+                                      progress=100,
+                                      video_filename=output_filename,
+                                      video_url=video_url,
+                                      completed_at=datetime.now())
 
         # 清理临时文件
         os.remove(video1_path)
@@ -129,12 +124,12 @@ def process_maozibi_background(task_id: str, video0_path: str, video1_path: str)
 
         # 更新任务状态为完成
         TaskStatus.update_task_status(task_id,
-                         status="completed",
-                         message="maozibi视频处理完成",
-                         progress=100,
-                         video_filename=output_filename,
-                         video_url=video_url,
-                         completed_at=datetime.now())
+                                      status="completed",
+                                      message="maozibi视频处理完成",
+                                      progress=100,
+                                      video_filename=output_filename,
+                                      video_url=video_url,
+                                      completed_at=datetime.now())
 
         # 清理临时文件
         os.remove(video0_path)
@@ -188,12 +183,12 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
 
         # 更新任务状态为完成
         TaskStatus.update_task_status(task_id,
-                         status="completed",
-                         message="maozibi_score视频处理完成",
-                         progress=100,
-                         video_filename=output_filename,
-                         video_url=video_url,
-                         completed_at=datetime.now())
+                                      status="completed",
+                                      message="maozibi_score视频处理完成",
+                                      progress=100,
+                                      video_filename=output_filename,
+                                      video_url=video_url,
+                                      completed_at=datetime.now())
 
         # 清理临时文件
         os.remove(video0_path)
@@ -240,9 +235,9 @@ def process_videos_web():
 
     # 初始化任务状态
     TaskStatus.create_task_status(task_id,
-                      status="pending",
-                      message="任务已创建，准备处理...",
-                      progress=0)
+                                  status="pending",
+                                  message="任务已创建，准备处理...",
+                                  progress=0)
 
     # 保存临时文件
     temp_dir = tempfile.mkdtemp()
@@ -265,7 +260,6 @@ def process_videos_web():
         "api_status_url": status_url,
         "created_at": task_data["created_at"]
     })
-
 
 
 @app.route('/maozibi-web', methods=['POST'])
@@ -292,9 +286,9 @@ def maozibi_web():
 
     # 初始化任务状态
     TaskStatus.create_task_status(task_id,
-                      status="pending",
-                      message="任务已创建，等待处理...",
-                      progress=0)
+                                  status="pending",
+                                  message="任务已创建，等待处理...",
+                                  progress=0)
 
     # 保存临时文件
     temp_dir = tempfile.mkdtemp()
@@ -345,9 +339,9 @@ def maobizi_score_web():
 
     # 初始化任务状态
     TaskStatus.create_task_status(task_id,
-                      status="pending",
-                      message="任务已创建，等待处理...",
-                      progress=0)
+                                  status="pending",
+                                  message="任务已创建，等待处理...",
+                                  progress=0)
 
     # 保存临时文件
     temp_dir = tempfile.mkdtemp()
@@ -461,6 +455,7 @@ def get_task_status_page(task_id):
         return success(task)
     else:
         return render_template('status.html', task=task, task_id=task_id)
+
 
 @app.route('/output/<filename>')
 def get_output_file(filename):

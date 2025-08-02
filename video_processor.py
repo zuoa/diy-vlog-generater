@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 import numpy as np
-from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, concatenate_audioclips
+from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, concatenate_audioclips, ColorClip
 
 try:
     import cv2
@@ -28,7 +28,7 @@ class VideoProcessor:
     """
 
     def __init__(self):
-        self.output_size = (1920, 1080)  # 输出视频尺寸
+        self.output_size = (1280, 720)  # 输出视频尺寸
         self.transition_duration = 0.3  # 转场时长
         self.beat_frame_duration = 0.7  # 每个卡点帧显示时长
         self.fade_duration = 0.1  # 淡入淡出时长（秒）
@@ -67,8 +67,8 @@ class VideoProcessor:
         """
         try:
             # 加载视频
-            video1 = VideoFileClip(video1_path)
-            video2 = VideoFileClip(video2_path)
+            video1 = VideoFileClip(video1_path).resized(self.output_size)
+            video2 = VideoFileClip(video2_path).resized(self.output_size)
 
             # 创建卡点片段
             beat_clips = self._create_beat_clips(video1, beat_times)
@@ -78,11 +78,11 @@ class VideoProcessor:
             main_clips = []
             for i in range(0, seg_duration + 1):
                 if i % 2 == 0:
-                    v_main = video2.subclipped(beat_times[-1] + i*seg_duration, beat_times[-1] + (i+1) * seg_duration)
-                    v_pip = video1.subclipped(beat_times[-1] + i*seg_duration, beat_times[-1] + (i+1) * seg_duration)
+                    v_main = video2.subclipped(beat_times[-1] + i * seg_duration, beat_times[-1] + (i + 1) * seg_duration)
+                    v_pip = video1.subclipped(beat_times[-1] + i * seg_duration, beat_times[-1] + (i + 1) * seg_duration)
                 else:
-                    v_main = video1.subclipped(beat_times[-1] + i*seg_duration, beat_times[-1] + (i+1) * seg_duration)
-                    v_pip = video2.subclipped(beat_times[-1] + i*seg_duration, beat_times[-1] + (i+1) * seg_duration)
+                    v_main = video1.subclipped(beat_times[-1] + i * seg_duration, beat_times[-1] + (i + 1) * seg_duration)
+                    v_pip = video2.subclipped(beat_times[-1] + i * seg_duration, beat_times[-1] + (i + 1) * seg_duration)
 
                 pip_result = self.create_picture_in_picture(
                     main_clip=v_main,
@@ -97,7 +97,9 @@ class VideoProcessor:
 
             v_end = self.create_text_video_clip("A Touch of Culture, A Handful of Heart", 3, output_size=video1.size)
             main_clips.append(v_end)
-            v_diy = concatenate_videoclips(main_clips, method='compose')
+            fade_duration = 1
+            transition_clip = ColorClip(size=self.output_size, color=(0, 0, 0), duration=1)
+            v_diy = concatenate_videoclips(main_clips, method='compose', transition=transition_clip, bg_color=(0, 0, 0), padding=-fade_duration)
             #
             # # 创建带时间显示的第二个视频
             # video2_with_timer = self._add_timer_to_video(video2, speed_factor, font_size)
@@ -146,6 +148,7 @@ class VideoProcessor:
             print(f"视频处理完成，保存至: {output_path}")
 
         except Exception as e:
+            print(e)
             print(f"视频处理出错: {str(e)}")
             # 确保在出错时也能清理资源
             try:
@@ -1047,9 +1050,9 @@ class VideoProcessor:
             print(f"FFmpeg 添加音频失败: {str(e)}")
             return False
 
-    def create_picture_in_picture(self, main_clip, pip_clip, 
-                                  pip_position='bottom-right', pip_scale=0.25, 
-                                  pip_opacity=1.0, margin=20, 
+    def create_picture_in_picture(self, main_clip, pip_clip,
+                                  pip_position='bottom-right', pip_scale=0.25,
+                                  pip_opacity=1.0, margin=20,
                                   pip_start_time=0, pip_duration=None):
         """
         创建画中画效果
@@ -1071,18 +1074,18 @@ class VideoProcessor:
             print(f"创建画中画效果...")
             print(f"主视频: {main_clip.size}, 时长: {main_clip.duration:.2f}s")
             print(f"画中画: {pip_clip.size}, 时长: {pip_clip.duration:.2f}s")
-            
+
             # 确保pip_scale在有效范围内
             pip_scale = max(0.1, min(1.0, pip_scale))
-            
+
             # 确保pip_opacity在有效范围内
             pip_opacity = max(0.0, min(1.0, pip_opacity))
-            
+
             # 计算画中画的尺寸
             main_width, main_height = main_clip.size
             pip_width = int(main_width * pip_scale)
             pip_height = int(main_height * pip_scale)
-            
+
             # 调整画中画尺寸
             try:
                 if hasattr(pip_clip, 'resized'):
@@ -1093,7 +1096,7 @@ class VideoProcessor:
             except Exception as resize_error:
                 print(f"调整画中画尺寸失败: {resize_error}")
                 return main_clip
-            
+
             # 设置画中画透明度
             if pip_opacity < 1.0:
                 try:
@@ -1104,7 +1107,7 @@ class VideoProcessor:
                     print(f"设置画中画透明度: {pip_opacity}")
                 except Exception as opacity_error:
                     print(f"设置透明度失败: {opacity_error}")
-            
+
             # 计算画中画位置
             if pip_position == 'top-left':
                 position = (margin, margin)
@@ -1123,9 +1126,9 @@ class VideoProcessor:
                 else:
                     print(f"未知的位置参数: {pip_position}，使用默认位置 bottom-right")
                     position = (main_width - pip_width - margin, main_height - pip_height - margin)
-            
+
             print(f"画中画位置: {position}")
-            
+
             # 设置画中画位置
             try:
                 if hasattr(resized_pip, 'with_position'):
@@ -1135,7 +1138,7 @@ class VideoProcessor:
             except Exception as position_error:
                 print(f"设置位置失败: {position_error}")
                 return main_clip
-            
+
             # 设置画中画的时间参数
             if pip_duration is not None:
                 # 限制画中画时长
@@ -1148,7 +1151,7 @@ class VideoProcessor:
                     print(f"设置画中画时长: {pip_duration:.2f}s")
                 except Exception as duration_error:
                     print(f"设置时长失败: {duration_error}")
-            
+
             # 设置画中画开始时间
             if pip_start_time > 0:
                 try:
@@ -1159,7 +1162,7 @@ class VideoProcessor:
                     print(f"设置画中画开始时间: {pip_start_time:.2f}s")
                 except Exception as start_error:
                     print(f"设置开始时间失败: {start_error}")
-            
+
             # 合成视频
             try:
                 # 确保主视频没有audio问题
@@ -1169,23 +1172,23 @@ class VideoProcessor:
                     composite_clip = composite_clip.with_audio(main_clip.audio)
                 else:
                     composite_clip = CompositeVideoClip([main_clip, positioned_pip])
-                
+
                 print(f"画中画合成成功!")
                 print(f"最终视频: {composite_clip.size}, 时长: {composite_clip.duration:.2f}s")
-                
+
                 return composite_clip
-                
+
             except Exception as composite_error:
                 print(f"合成视频失败: {composite_error}")
                 return main_clip
-        
+
         except Exception as e:
             print(f"创建画中画效果失败: {str(e)}")
             return main_clip
 
-    def create_advanced_picture_in_picture(self, main_clip, pip_clip, 
-                                         pip_animations=None, border_width=2, 
-                                         border_color='white', shadow=True):
+    def create_advanced_picture_in_picture(self, main_clip, pip_clip,
+                                           pip_animations=None, border_width=2,
+                                           border_color='white', shadow=True):
         """
         创建高级画中画效果（带动画、边框、阴影等）
         
@@ -1202,19 +1205,19 @@ class VideoProcessor:
         """
         try:
             print("创建高级画中画效果...")
-            
+
             # 基础画中画处理
             if pip_animations is None:
                 # 使用默认配置
                 return self.create_picture_in_picture(main_clip, pip_clip)
-            
+
             # 处理动画效果
             main_width, main_height = main_clip.size
-            
+
             # 动态位置动画
             if 'position_keyframes' in pip_animations:
                 keyframes = pip_animations['position_keyframes']
-                
+
                 def position_function(t):
                     """根据时间t计算画中画位置"""
                     # 简单的线性插值
@@ -1223,13 +1226,13 @@ class VideoProcessor:
                             if i == 0:
                                 return pos
                             else:
-                                prev_time, prev_pos = keyframes[i-1]
+                                prev_time, prev_pos = keyframes[i - 1]
                                 progress = (t - prev_time) / (time - prev_time)
                                 x = prev_pos[0] + (pos[0] - prev_pos[0]) * progress
                                 y = prev_pos[1] + (pos[1] - prev_pos[1]) * progress
                                 return (int(x), int(y))
                     return keyframes[-1][1]  # 返回最后一个位置
-                
+
                 # 应用动态位置
                 try:
                     if hasattr(pip_clip, 'with_position'):
@@ -1242,11 +1245,11 @@ class VideoProcessor:
                     positioned_pip = pip_clip
             else:
                 positioned_pip = pip_clip
-            
+
             # 动态缩放动画
             if 'scale_keyframes' in pip_animations:
                 scale_keyframes = pip_animations['scale_keyframes']
-                
+
                 def scale_function(get_frame, t):
                     """根据时间t计算缩放"""
                     # 计算当前时间的缩放比例
@@ -1257,18 +1260,18 @@ class VideoProcessor:
                                 current_scale = scale
                                 break
                             else:
-                                prev_time, prev_scale = scale_keyframes[i-1]
+                                prev_time, prev_scale = scale_keyframes[i - 1]
                                 progress = (t - prev_time) / (time - prev_time)
                                 current_scale = prev_scale + (scale - prev_scale) * progress
                                 break
                     else:
                         current_scale = scale_keyframes[-1][1]
-                    
+
                     # 获取原始帧
                     frame = get_frame(t)
                     if frame is None:
                         return frame
-                    
+
                     # 应用缩放
                     if cv2 is not None:
                         h, w = frame.shape[:2]
@@ -1276,9 +1279,9 @@ class VideoProcessor:
                         new_h = int(h * current_scale)
                         if new_w > 0 and new_h > 0:
                             frame = cv2.resize(frame, (new_w, new_h))
-                    
+
                     return frame
-                
+
                 # 应用动态缩放
                 try:
                     if hasattr(positioned_pip, 'transform'):
@@ -1286,29 +1289,29 @@ class VideoProcessor:
                         print("应用动态缩放动画")
                 except Exception as scale_error:
                     print(f"动态缩放动画失败: {scale_error}")
-            
+
             # 合成最终视频
             try:
                 composite_clip = CompositeVideoClip([main_clip, positioned_pip])
-                
+
                 if hasattr(main_clip, 'audio') and main_clip.audio is not None:
                     composite_clip = composite_clip.with_audio(main_clip.audio)
-                
+
                 print("高级画中画合成成功!")
                 return composite_clip
-                
+
             except Exception as composite_error:
                 print(f"高级画中画合成失败: {composite_error}")
                 return main_clip
-        
+
         except Exception as e:
             print(f"创建高级画中画效果失败: {str(e)}")
             return main_clip
 
-    def create_text_video_clip(self, text, duration, 
-                              font_size=60, background_color='black', 
-                              text_color='white', font='Arial',
-                              text_position='center', output_size=None):
+    def create_text_video_clip(self, text, duration,
+                               font_size=60, background_color='black',
+                               text_color='white', font='Arial',
+                               text_position='center', output_size=None):
         """
         创建一个带文字的视频剪辑
         
@@ -1328,11 +1331,11 @@ class VideoProcessor:
         try:
             print(f"创建文字视频剪辑: '{text}'")
             print(f"参数: 时长={duration}s, 字体大小={font_size}, 背景={background_color}, 文字颜色={text_color}")
-            
+
             # 确定输出尺寸
             if output_size is None:
                 output_size = self.output_size
-            
+
             # 创建文字剪辑
             try:
                 text_clip = TextClip(
@@ -1355,7 +1358,7 @@ class VideoProcessor:
                 except Exception as text_error2:
                     print(f"文字剪辑创建完全失败: {text_error2}")
                     raise Exception(f"无法创建文字剪辑: {text_error2}")
-            
+
             # 设置文字剪辑的持续时间
             try:
                 if hasattr(text_clip, 'with_duration'):
@@ -1366,7 +1369,7 @@ class VideoProcessor:
             except Exception as duration_error:
                 print(f"设置持续时间失败: {duration_error}")
                 raise
-            
+
             # 设置文字位置
             try:
                 if hasattr(text_clip, 'with_position'):
@@ -1377,7 +1380,7 @@ class VideoProcessor:
             except Exception as position_error:
                 print(f"设置文字位置失败: {position_error}")
                 # 继续执行，使用默认位置
-            
+
             # 创建背景颜色剪辑
             try:
                 # 处理背景颜色参数
@@ -1387,7 +1390,7 @@ class VideoProcessor:
                         # 十六进制颜色转RGB
                         hex_color = background_color.lstrip('#')
                         if len(hex_color) == 6:
-                            bg_color = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+                            bg_color = tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
                         else:
                             print(f"无效的十六进制颜色: {background_color}，使用黑色")
                             bg_color = (0, 0, 0)
@@ -1416,9 +1419,9 @@ class VideoProcessor:
                 else:
                     print(f"无效的背景颜色格式: {background_color}，使用黑色")
                     bg_color = (0, 0, 0)
-                
+
                 print(f"背景颜色RGB: {bg_color}")
-                
+
                 # 使用ColorClip创建纯色背景
                 try:
                     from moviepy.video.VideoClip import ColorClip
@@ -1443,46 +1446,46 @@ class VideoProcessor:
                         print("ColorClip不可用，使用numpy数组创建背景")
                         import numpy as np
                         from moviepy.video.VideoClip import VideoClip
-                        
+
                         def make_frame(t):
                             # 创建纯色帧
                             frame = np.full((output_size[1], output_size[0], 3), bg_color, dtype=np.uint8)
                             return frame
-                        
+
                         background_clip = VideoClip(make_frame, duration=duration)
                         background_clip = background_clip.set_fps(24)  # 设置帧率
                         print(f"使用numpy数组创建背景")
-                
+
             except Exception as bg_error:
                 print(f"创建背景剪辑失败: {bg_error}")
                 raise
-            
+
             # 合成文字和背景
             try:
                 final_clip = CompositeVideoClip([background_clip, text_clip], size=output_size)
                 print(f"合成最终视频剪辑成功，尺寸: {final_clip.size}, 时长: {final_clip.duration:.2f}s")
-                
+
                 # 清理临时资源
                 try:
                     background_clip.close()
                     text_clip.close()
                 except:
                     pass
-                
+
                 return final_clip
-                
+
             except Exception as composite_error:
                 print(f"合成视频剪辑失败: {composite_error}")
-                
+
                 # 清理资源
                 try:
                     background_clip.close()
                     text_clip.close()
                 except:
                     pass
-                
+
                 raise
-                
+
         except Exception as e:
             print(f"创建文字视频剪辑失败: {str(e)}")
             raise
@@ -1536,30 +1539,30 @@ if __name__ == "__main__":
         try:
             # 加载两个视频clip
             main_video = VideoFileClip("video1.mp4")  # 主视频（背景）
-            pip_video = VideoFileClip("video2.mp4")   # 画中画视频（前景小窗口）
-            
+            pip_video = VideoFileClip("video2.mp4")  # 画中画视频（前景小窗口）
+
             # 创建基础画中画效果
             pip_result = processor.create_picture_in_picture(
                 main_clip=main_video,
                 pip_clip=pip_video,
                 pip_position='bottom-right',  # 画中画位置：右下角
-                pip_scale=0.3,               # 画中画大小：主视频的30%
-                pip_opacity=0.9,             # 画中画透明度：90%
-                margin=30,                   # 距离边缘30像素
-                pip_start_time=2.0,          # 画中画在第2秒开始显示
-                pip_duration=10.0            # 画中画显示10秒
+                pip_scale=0.3,  # 画中画大小：主视频的30%
+                pip_opacity=0.9,  # 画中画透明度：90%
+                margin=30,  # 距离边缘30像素
+                pip_start_time=2.0,  # 画中画在第2秒开始显示
+                pip_duration=10.0  # 画中画显示10秒
             )
-            
+
             # 保存画中画视频
             pip_result.write_videofile("output/pip_video.mp4", logger=None)
-            
+
             # 清理资源
             main_video.close()
             pip_video.close()
             pip_result.close()
-            
+
             print("基础画中画视频创建成功！")
-            
+
         except Exception as e:
             print(f"基础画中画示例失败: {e}")
 
@@ -1569,23 +1572,23 @@ if __name__ == "__main__":
             # 加载两个视频clip
             main_video = VideoFileClip("video1.mp4")
             pip_video = VideoFileClip("video2.mp4")
-            
+
             # 定义动画配置
             animations = {
                 # 位置动画：画中画从左上角移动到右下角
                 'position_keyframes': [
-                    (0, (50, 50)),           # 第0秒：左上角
-                    (5, (400, 200)),         # 第5秒：中间位置
-                    (10, (1200, 600))        # 第10秒：右下角
+                    (0, (50, 50)),  # 第0秒：左上角
+                    (5, (400, 200)),  # 第5秒：中间位置
+                    (10, (1200, 600))  # 第10秒：右下角
                 ],
                 # 缩放动画：画中画大小变化
                 'scale_keyframes': [
-                    (0, 0.2),                # 第0秒：20%大小
-                    (5, 0.4),                # 第5秒：40%大小
-                    (10, 0.25)               # 第10秒：25%大小
+                    (0, 0.2),  # 第0秒：20%大小
+                    (5, 0.4),  # 第5秒：40%大小
+                    (10, 0.25)  # 第10秒：25%大小
                 ]
             }
-            
+
             # 创建高级画中画效果
             advanced_pip_result = processor.create_advanced_picture_in_picture(
                 main_clip=main_video,
@@ -1595,17 +1598,17 @@ if __name__ == "__main__":
                 border_color='white',
                 shadow=True
             )
-            
+
             # 保存高级画中画视频
             advanced_pip_result.write_videofile("output/advanced_pip_video.mp4", logger=None)
-            
+
             # 清理资源
             main_video.close()
             pip_video.close()
             advanced_pip_result.close()
-            
+
             print("高级画中画视频创建成功！")
-            
+
         except Exception as e:
             print(f"高级画中画示例失败: {e}")
 
@@ -1616,7 +1619,7 @@ if __name__ == "__main__":
             main_video = VideoFileClip("video1.mp4")
             pip_video1 = VideoFileClip("video2.mp4")
             pip_video2 = VideoFileClip("video3.mp4")
-            
+
             # 创建第一个画中画（右上角）
             temp_result = processor.create_picture_in_picture(
                 main_clip=main_video,
@@ -1626,7 +1629,7 @@ if __name__ == "__main__":
                 pip_start_time=0,
                 pip_duration=8
             )
-            
+
             # 在第一个画中画的基础上添加第二个画中画（左下角）
             final_result = processor.create_picture_in_picture(
                 main_clip=temp_result,
@@ -1636,18 +1639,18 @@ if __name__ == "__main__":
                 pip_start_time=3,
                 pip_duration=6
             )
-            
+
             # 保存多画中画视频
             final_result.write_videofile("output/multi_pip_video.mp4", logger=None)
-            
+
             # 清理资源
             main_video.close()
             pip_video1.close()
             pip_video2.close()
             temp_result.close()
             final_result.close()
-            
+
             print("多画中画视频创建成功！")
-            
+
         except Exception as e:
             print(f"多画中画示例失败: {e}")
