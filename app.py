@@ -299,7 +299,7 @@ def maozibi_web():
     return redirect(url_for('get_task_status_page', task_id=task_id))
 
 
-@app.route('/maobizi_score-web', methods=['POST'])
+@app.route('/mbz/gen_score_video', methods=['POST'])
 def maobizi_score_web():
     """处理两个视频文件和分数 - Web界面版本"""
     # 检查文件
