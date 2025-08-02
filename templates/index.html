@@ -27,7 +27,7 @@
             </ul>
         </div>
         
-        <form action="{{ url_for('process_videos_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+        <form action="{{ url_for('process_videos_web') }}" method="post" enctype="multipart/form-data" onsubmit="return handleFormSubmit(event, this)">
             <div class="upload-section">
                 <div class="form-group">
                     <label for="video1">📹 选择第一个视频文件：</label>
@@ -58,7 +58,7 @@
             </ul>
         </div>
         
-        <form action="{{ url_for('maozibi_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+        <form action="{{ url_for('maozibi_web') }}" method="post" enctype="multipart/form-data" onsubmit="return handleFormSubmit(event, this)">
             <div class="upload-section">
                 <div class="form-group">
                     <label for="video0_maozibi">📹 选择底层视频文件 (video0)：</label>
@@ -90,7 +90,7 @@
             </ul>
         </div>
         
-        <form action="{{ url_for('maobizi_score_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+        <form action="{{ url_for('maobizi_score_web') }}" method="post" enctype="multipart/form-data" onsubmit="return handleFormSubmit(event, this)">
             <div class="upload-section">
                 <div class="form-group">
                     <label for="video0_score">📹 选择底层视频文件 (video0)：</label>
@@ -126,7 +126,7 @@
             </ul>
         </div>
         
-        <form action="{{ url_for('process_single_video_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+        <form action="{{ url_for('process_single_video_web') }}" method="post" enctype="multipart/form-data" onsubmit="return handleFormSubmit(event, this)">
             <div class="upload-section">
                 <div class="form-group">
                     <label for="single_video">🎬 选择视频文件：</label>
@@ -151,7 +151,7 @@
             </ul>
         </div>
         
-        <form action="{{ url_for('maozibi_img_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+        <form action="{{ url_for('maozibi_img_web') }}" method="post" enctype="multipart/form-data" onsubmit="return handleFormSubmit(event, this)">
             <div class="upload-section">
                 <div class="form-group">
                     <label for="image_upload">🖼️ 选择图片文件：</label>

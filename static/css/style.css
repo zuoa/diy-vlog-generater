@@ -354,9 +354,9 @@ input[type="file"]:focus, input[type="text"]:focus {
 
 /* 二维码容器 */
 .qr-code-container {
-    display: block;
-    margin: 15px auto;
-    max-width: 200px;
+    display: block !important;
+    margin: 15px auto !important;
+    max-width: 250px;
     width: 100%;
     border: 2px solid #007bff;
     border-radius: 8px;
@@ -365,16 +365,38 @@ input[type="file"]:focus, input[type="text"]:focus {
     padding: 10px;
     box-sizing: border-box;
     overflow: hidden;
+    min-height: 50px; /* 确保容器有最小高度 */
+    position: relative; /* 确保定位正确 */
+}
+
+/* PC端二维码容器特殊样式 */
+@media (min-width: 769px) {
+    .qr-code-container {
+        max-width: 220px !important;
+        min-width: 180px !important;
+        padding: 12px !important;
+    }
 }
 
 .qr-code-container canvas, 
 .qr-code-container img {
-    display: block;
-    margin: 0 auto;
-    max-width: 100%;
-    width: auto;
-    height: auto;
+    display: block !important;
+    margin: 0 auto !important;
+    max-width: 100% !important;
+    width: auto !important;
+    height: auto !important;
     object-fit: contain;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* PC端二维码图像特殊样式 */
+@media (min-width: 769px) {
+    .qr-code-container canvas,
+    .qr-code-container img {
+        min-width: 160px !important;
+        min-height: 160px !important;
+    }
 }
 
 /* 强制二维码不超出容器 */

@@ -295,8 +295,12 @@ def maozibi_web():
     # 启动后台任务
     executor.submit(process_maozibi_background, task_id, video0_path, video1_path)
 
-    # 重定向到状态页面
-    return redirect(url_for('get_task_status_page', task_id=task_id))
+    task_data = TaskStatus.get_task_status(task_id)
+    return success({
+        "task_id": task_id,
+        "status_url": status_url,
+        "created_at": task_data["created_at"]
+    })
 
 
 @app.route('/mbz/gen_score_video', methods=['POST'])
@@ -319,6 +323,7 @@ def maobizi_score_web():
     # 检查文件类型
     if not video0.content_type.startswith('video/'):
         abort(400, "video0必须是视频文件")
+
     if not video1.content_type.startswith('video/'):
         abort(400, "video1必须是视频文件")
 
@@ -384,16 +389,27 @@ def process_single_video_web():
     video.save(str(video_path))
 
     # 生成视频访问URL
-    video_url = f"http://8.215.28.241:721/output/{video_filename}"
+    video_url = f"{APP_HOST}/output/{video_filename}"
 
-    # 构建结果对象，用于HTML模板
-    result = {
+    # 创建任务状态记录
+    TaskStatus.create_task_status(task_id,
+                                  status="completed",
+                                  message="视频上传完成",
+                                  progress=100,
+                                  video_filename=video_filename,
+                                  video_url=video_url,
+                                  completed_at=datetime.now())
+
+    # 生成状态页面URL
+    status_url = f"{APP_HOST}/status/{task_id}"
+
+    return success({
         "task_id": task_id,
-        "video_url": video_url
-    }
-
-    # 返回模板响应
-    return render_template('single_video_result.html', result=result)
+        "status_url": status_url,
+        "video_url": video_url,
+        "created_at": datetime.now().isoformat(),
+        "completed_at": datetime.now().isoformat()
+    })
 
 
 @app.route('/maozibi_img-web', methods=['POST'])
@@ -439,6 +455,7 @@ def maozibi_img_web():
             "task_id": task_id,
             "message": "图片上传成功，二维码已生成",
             "status": "completed",
+            "status_url":image_url,
             "image_url": image_url,
             "created_at": datetime.now().isoformat(),
             "completed_at": datetime.now().isoformat()
@@ -509,6 +526,12 @@ def health_check():
         "python_version": f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}",
         "active_tasks": TaskStatus.select().count()
     })
+
+
+@app.route('/qr-test')
+def qr_test():
+    """二维码功能测试页面"""
+    return render_template('qr_test.html')
 
 
 @app.route('/favicon.ico')

@@ -3,6 +3,52 @@ function showLoading() {
     document.getElementById('loading').style.display = 'block';
 }
 
+// 隐藏加载动画
+function hideLoading() {
+    document.getElementById('loading').style.display = 'none';
+}
+
+// 处理表单提交
+function handleFormSubmit(event, form) {
+    event.preventDefault(); // 阻止默认表单提交
+    
+    showLoading();
+    
+    // 创建FormData对象
+    const formData = new FormData(form);
+    
+    // 发送Ajax请求
+    fetch(form.action, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        hideLoading();
+        
+        if (data.success && data.data && data.data.status_url) {
+            // 跳转到状态页面
+            window.location.href = data.data.status_url;
+        } else {
+            // 处理错误响应
+            const errorMessage = data.message || '请求失败，请重试';
+            alert('错误: ' + errorMessage);
+        }
+    })
+    .catch(error => {
+        hideLoading();
+        console.error('Error:', error);
+        alert('网络错误或服务器错误，请重试: ' + error.message);
+    });
+    
+    return false; // 阻止表单的默认提交行为
+}
+
 // 切换模式
 function switchMode(mode) {
     // 更新按钮状态
@@ -50,11 +96,16 @@ function switchMode(mode) {
 
 // 生成二维码的函数 (使用qrcodejs库)
 function generateQRCode(text, elementId, options = {}) {
+    console.log('开始生成二维码:', elementId, '文本:', text, '选项:', options);
+    
     const element = document.getElementById(elementId);
     if (!element) {
         console.error('找不到二维码容器元素:', elementId);
         return;
     }
+    
+    console.log('二维码容器元素找到:', element);
+    console.log('容器样式:', window.getComputedStyle(element));
     
     // 检查是否已经生成过二维码
     if (element.dataset.qrGenerated === 'true') {
@@ -65,9 +116,11 @@ function generateQRCode(text, elementId, options = {}) {
     // 检查QRCode库是否可用
     if (!checkQRCodeLibrary()) {
         console.error('QRCode库未加载');
-        element.innerHTML = '<div style="color: red; text-align: center; padding: 20px; border: 1px solid #ddd;">QRCode库未加载</div>';
+        element.innerHTML = '<div style="color: red; text-align: center; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff5f5;">❌ QRCode库未加载<br/><small>请刷新页面重试</small></div>';
         return;
     }
+    
+    console.log('QRCode库已可用，版本信息:', typeof QRCode);
     
     // 彻底清空容器内容
     element.innerHTML = '';
@@ -83,29 +136,41 @@ function generateQRCode(text, elementId, options = {}) {
                 colorLight: options.lightColor || '#FFFFFF'
             };
             
+            console.log('正在创建二维码，选项:', qrOptions);
+            
             // 创建二维码
             new QRCode(element, qrOptions);
             
             // 标记已生成
             element.dataset.qrGenerated = 'true';
-            console.log('二维码生成成功:', elementId);
+            console.log('二维码创建完成:', elementId);
             
             // 确保只有一个二维码元素
             setTimeout(function() {
                 const qrElements = element.querySelectorAll('canvas, img');
+                console.log('检查二维码元素数量:', qrElements.length);
+                
                 if (qrElements.length > 1) {
                     console.warn('发现多个二维码元素，移除多余的');
                     for (let i = 1; i < qrElements.length; i++) {
                         qrElements[i].remove();
                     }
+                } else if (qrElements.length === 0) {
+                    console.error('二维码生成失败，没有找到canvas或img元素');
+                    element.innerHTML = '<div style="color: orange; text-align: center; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fffbf0;">⚠️ 二维码生成异常<br/><small>尝试刷新页面</small></div>';
+                } else {
+                    console.log('二维码生成成功，元素类型:', qrElements[0].tagName);
+                    // 确保元素可见
+                    qrElements[0].style.display = 'block';
+                    qrElements[0].style.margin = '0 auto';
                 }
-            }, 100);
+            }, 200);
             
         } catch (error) {
             console.error('二维码生成失败:', error);
-            element.innerHTML = '<div style="color: red; text-align: center; padding: 20px; border: 1px solid #ddd;">二维码生成失败: ' + error.message + '</div>';
+            element.innerHTML = '<div style="color: red; text-align: center; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff5f5;">❌ 二维码生成失败<br/><small>' + error.message + '</small></div>';
         }
-    }, 10);
+    }, 50); // 增加延迟时间
 }
 
 // 生成二维码到img元素的函数 (创建div容器然后获取img)
@@ -213,6 +278,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 // 一般移动设备
                 width = Math.min(width, 160);
                 height = Math.min(height, 160);
+            } else {
+                // PC端保持原始大小，或者稍微调整
+                width = Math.max(width, 180); // PC端确保最小尺寸
+                height = Math.max(height, 180);
+                console.log('PC端二维码尺寸:', width, 'x', height);
             }
             
             if (element.tagName.toLowerCase() === 'div') {
@@ -250,6 +320,11 @@ function regenerateAllQRCodes() {
                 // 一般移动设备
                 width = Math.min(width, 160);
                 height = Math.min(height, 160);
+            } else {
+                // PC端保持原始大小，或者稍微调整
+                width = Math.max(width, 180); // PC端确保最小尺寸
+                height = Math.max(height, 180);
+                console.log('PC端二维码尺寸:', width, 'x', height);
             }
             
             if (element.tagName.toLowerCase() === 'div') {

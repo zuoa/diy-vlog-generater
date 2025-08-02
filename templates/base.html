@@ -14,8 +14,60 @@
 <body>
     {% block content %}{% endblock %}
     
-    <!-- QRCode.js库 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- QRCode.js库 - 多个CDN备用 + 本地备用 -->
+    <script>
+    // 尝试多个CDN源加载QRCode库，失败后使用本地备用
+    function loadQRCodeLibrary() {
+        const cdns = [
+            'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+            'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js',
+            'https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js'
+        ];
+        
+        let loadIndex = 0;
+        
+        function tryLoad() {
+            if (loadIndex >= cdns.length) {
+                console.warn('所有QRCode CDN源都加载失败，尝试本地备用库');
+                loadLocalBackup();
+                return;
+            }
+            
+            const script = document.createElement('script');
+            script.src = cdns[loadIndex];
+            script.onerror = function() {
+                console.warn('QRCode CDN加载失败:', cdns[loadIndex]);
+                loadIndex++;
+                tryLoad();
+            };
+            script.onload = function() {
+                console.log('QRCode库加载成功:', cdns[loadIndex]);
+            };
+            document.head.appendChild(script);
+        }
+        
+        function loadLocalBackup() {
+            const script = document.createElement('script');
+            script.src = '{{ url_for("static", filename="js/qrcode.local.js") }}';
+            script.onerror = function() {
+                console.error('本地QRCode备用库也加载失败');
+                // 显示最终错误信息
+                document.querySelectorAll('.qr-code-container').forEach(function(el) {
+                    el.innerHTML = '<div style="color: red; text-align: center; padding: 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff5f5;">❌ 二维码库加载失败<br/><small>请检查网络连接或联系管理员</small></div>';
+                });
+            };
+            script.onload = function() {
+                console.log('本地QRCode备用库加载成功');
+            };
+            document.head.appendChild(script);
+        }
+        
+        tryLoad();
+    }
+    
+    // 立即开始加载
+    loadQRCodeLibrary();
+    </script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
