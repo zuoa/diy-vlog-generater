@@ -80,12 +80,24 @@ class VideoProcessor:
 
             # 添加文本（如果有）
             if text:
-                from moviepy.video.tools.drawing import TextClip
                 text_clip = TextClip(
                     text=text,
                     font_size=text_font_size,
                     color='white'
-                ).set_duration(pip_clip.duration).set_position(text_position)
+                )
+                
+                # 设置持续时间
+                if hasattr(text_clip, 'with_duration'):
+                    text_clip = text_clip.with_duration(pip_clip.duration)
+                else:
+                    text_clip = text_clip.set_duration(pip_clip.duration)
+                
+                # 设置位置
+                if hasattr(text_clip, 'with_position'):
+                    text_clip = text_clip.with_position(text_position)
+                else:
+                    text_clip = text_clip.set_position(text_position)
+                
                 final_clip = CompositeVideoClip([pip_clip, text_clip])
             else:
                 final_clip = pip_clip
@@ -132,7 +144,7 @@ class VideoProcessor:
             left_duration = min_duration - beat_times[-1]
             seg_duration = int(left_duration / 4)
             main_clips = []
-            for i in range(0, seg_duration + 1):
+            for i in range(0, 4):
                 if i % 2 == 0:
                     v_main = video2.subclipped(beat_times[-1] + i * seg_duration, beat_times[-1] + (i + 1) * seg_duration)
                     v_pip = video1.subclipped(beat_times[-1] + i * seg_duration, beat_times[-1] + (i + 1) * seg_duration)
