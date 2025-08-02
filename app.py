@@ -528,6 +528,16 @@ def favicon():
     return '', 204
 
 
+@app.cli.command("init-db")
+def init_db():
+    """Initialize the database tables"""
+    try:
+        create_tables()
+        print("数据库初始化完成")
+    except Exception as e:
+        print(f"数据库初始化失败: {str(e)}")
+
+
 if __name__ == '__main__':
     print("启动Flask视频处理Web应用...")
     print("访问 http://localhost:5000 查看Web界面")
