@@ -14,6 +14,8 @@ import subprocess
 
 import qrcode
 
+from config import OUTPUT_DIR
+
 # MoviePy v2 导入
 try:
     from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, TextClip, concatenate_videoclips, concatenate_audioclips
@@ -393,9 +395,6 @@ class VideoProcessor:
             raise Exception("第一个视频文件数据为空")
         if not video2_data or len(video2_data) == 0:
             raise Exception("第二个视频文件数据为空")
-        
-        OUTPUT_DIR = Path(__file__).parent / "output"
-        OUTPUT_DIR.mkdir(exist_ok=True)
         
         video1_path = os.path.join(self.temp_dir, f"video1_{unique_id}.mp4")
         video2_path = os.path.join(self.temp_dir, f"video2_{unique_id}.mp4")
