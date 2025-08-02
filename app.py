@@ -20,6 +20,7 @@ from database import TaskStatus, create_tables
 from utils import success
 # 导入视频处理相关的类
 from video_process import VideoProcessor
+from video_processor import VideoProcessor as VP
 
 load_dotenv()
 
@@ -45,34 +46,28 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
         # 更新任务状态为处理中
         TaskStatus.update_task_status(task_id, status="processing", message="正在处理视频...", progress=20)
 
-        processor = VideoProcessor()
+        processor = VP()
 
-        # 检查ffmpeg
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        if not loop.run_until_complete(processor.check_ffmpeg()):
-            TaskStatus.update_task_status(task_id, status="error", message="FFmpeg未安装或不可用")
-            return
+        output_filename = f"processed_video_{task_id}.mp4"
+        output_filepath = f"output/processed_video_{task_id}.mp4"
+        # 生成视频访问URL
+        video_url = f"/output/{output_filename}"
 
         TaskStatus.update_task_status(task_id, progress=40, message="正在分析视频...")
-
-        # 读取视频数据
-        with open(video1_path, 'rb') as f:
-            video1_data = f.read()
-        with open(video2_path, 'rb') as f:
-            video2_data = f.read()
-
-        # 处理视频
-        output_path, output_filename = loop.run_until_complete(
-            processor.process_videos(video1_data, video2_data)
+        beat_times = [0.0, 4.5, 6.5, 9.8, 19,23]
+        processor.create_beat_video(
+            video1_path=video1_path,
+            video2_path=video2_path,
+            beat_times=beat_times,
+            output_path=output_filepath,
+            speed_factor=5,  # 第二个视频1.5倍速播放
+            font_size=120,  # 时间显示字体大小
+            background_music_path="jiggy boogy.mp3"  # 使用默认背景音乐 jiggy boogy.mp3，或指定其他音乐文件路径
         )
+
 
         TaskStatus.update_task_status(task_id, progress=80, message="正在生成最终文件...")
 
-        # 生成视频访问URL
-        video_url = f"/output/{output_filename}"
 
         # 更新任务状态为完成
         TaskStatus.update_task_status(task_id,
@@ -87,7 +82,6 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
         os.remove(video1_path)
         os.remove(video2_path)
         del processor
-        loop.close()
 
     except Exception as e:
         TaskStatus.update_task_status(task_id, status="error", message=f"处理失败: {str(e)}", progress=0)
