@@ -406,42 +406,56 @@ def process_single_video_web():
 
 @app.route('/maozibi_img-web', methods=['POST'])
 def maozibi_img_web():
-    """处理图片上传 - Web界面版本"""
-    # 检查文件
     if 'image' not in request.files:
-        abort(400, "缺少图片文件")
+        abort(400, "缺少上传的图片文件")
 
     image = request.files['image']
 
-    if image.filename == '':
-        abort(400, "请选择图片文件")
-
-    # 检查文件类型
-    if not image.content_type.startswith('image/'):
+    if not image.mimetype.startswith('image/'):
         abort(400, "上传的文件必须是图片格式")
 
-    # 生成任务ID
     task_id = str(uuid.uuid4())
 
-    # 获取文件扩展名
-    file_extension = image.filename.split('.')[-1] if '.' in image.filename else 'jpg'
+    file_extension = image.filename.rsplit('.', 1)[-1] if '.' in image.filename else 'jpg'
     image_filename = f"maozibi_img_{task_id}.{file_extension}"
     image_path = OUTPUT_DIR / image_filename
 
-    # 保存图片文件
-    image.save(str(image_path))
+    try:
+        image_data = image.read()
 
-    # 生成图片访问URL
-    image_url = f"http://8.215.28.241:721/output/{image_filename}"
+        if not image_data:
+            abort(400, "图片文件数据为空")
 
-    # 构建结果对象，用于HTML模板
-    result = {
-        "task_id": task_id,
-        "image_url": image_url
-    }
+        with open(image_path, 'wb') as f:
+            f.write(image_data)
 
-    # 返回模板响应
-    return render_template('image_result.html', result=result)
+        if not os.path.exists(image_path) or os.path.getsize(image_path) == 0:
+            abort(500, "图片文件保存失败")
+
+        print(f"图片保存成功: {image_path}, 大小: {len(image_data)} bytes")
+
+        image_url = f"{APP_HOST}/output/{image_filename}"
+
+        TaskStatus.update_task_status(task_id, **{"status": "completed",
+            "message": "图片上传并处理完成",
+            "progress": 100,
+            "created_at": datetime.now().isoformat(),
+            "completed_at": datetime.now().isoformat(),
+            "image_filename": image_filename,})
+
+        return success({
+            "task_id": task_id,
+            "message": "图片上传成功，二维码已生成",
+            "status": "completed",
+            "image_url": image_url,
+            "created_at": datetime.now().isoformat(),
+            "completed_at": datetime.now().isoformat()
+        })
+
+    except Exception as e:
+        if os.path.exists(image_path):
+            os.remove(image_path)
+        abort(500, f"处理失败: {str(e)}")
 
 
 @app.route('/status/<task_id>', methods=['GET', 'POST'])
