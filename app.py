@@ -12,16 +12,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
+from dotenv import load_dotenv
 from flask import Flask, request, render_template, redirect, url_for, jsonify, send_file, abort
 
+from utils import success
 # 导入视频处理相关的类
 from video_process import VideoProcessor
 
+load_dotenv()
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
 
 # 全局任务状态存储
 task_status: Dict[str, Dict] = {}
+
+
+APP_HOST = os.getenv("APP_HOST", "https://diy.cod.vision")
 
 # 配置目录
 STATIC_DIR = Path(__file__).parent / "static"
@@ -275,13 +281,18 @@ def process_videos_web():
     video2.save(video2_path)
 
     # 生成状态页面URL
-    status_url = f"http://8.215.28.241:721/status/{task_id}"
+    status_url = f"{APP_HOST}/status/{task_id}"
 
     # 启动后台任务
     executor.submit(process_videos_background, task_id, video1_path, video2_path)
 
-    # 重定向到状态页面
-    return redirect(url_for('get_task_status_page', task_id=task_id))
+    return success({
+        "task_id": task_id,
+        "status_url": status_url,
+        "api_status_url": status_url,
+        "created_at": task_status[task_id]["created_at"]
+    })
+
 
 
 @app.route('/maozibi-web', methods=['POST'])
@@ -474,24 +485,17 @@ def maozibi_img_web():
     return render_template('image_result.html', result=result)
 
 
-@app.route('/status/<task_id>')
-def get_task_status_page(task_id):
+@app.route('/status/<task_id>', methods=['GET', 'POST'])
+def get_task_status(task_id):
     """获取任务状态页面"""
     if task_id not in task_status:
         abort(404, "任务不存在")
 
     task = task_status[task_id]
-    return render_template('status.html', task=task, task_id=task_id)
-
-
-@app.route('/api/status/<task_id>')
-def get_task_status_api(task_id):
-    """获取任务状态API"""
-    if task_id not in task_status:
-        abort(404, "任务不存在")
-
-    return jsonify(task_status[task_id])
-
+    if request.method == 'POST':
+        success(task_status[task_id])
+    else:
+        return render_template('status.html', task=task, task_id=task_id)
 
 @app.route('/output/<filename>')
 def get_output_file(filename):
