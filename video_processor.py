@@ -27,8 +27,9 @@ class VideoProcessor:
 
     def __init__(self):
         self.output_size = (1920, 1080)  # 输出视频尺寸
-        self.transition_duration = 0.5  # 转场时长
-        self.beat_frame_duration = 1.0  # 每个卡点帧显示时长（增加到1秒）
+        self.transition_duration = 0.3  # 转场时长
+        self.beat_frame_duration = 0.7  # 每个卡点帧显示时长
+        self.fade_duration = 0.1  # 淡入淡出时长（秒）
         self._check_ffmpeg_availability()
     
     def _check_ffmpeg_availability(self):
@@ -140,10 +141,16 @@ class VideoProcessor:
                 print(f"警告: 卡点时间 {beat_time}s 超出视频长度 {video.duration}s")
                 continue
 
-            # 截取指定时间点的帧，使用更长的片段时间以获得更好的效果
-            clip_duration = 0.5  # 使用0.5秒的片段
-            start_time = max(0, beat_time - 0.1)  # 稍微提前开始
-            end_time = min(video.duration, beat_time + clip_duration)
+            # 确保截取的片段长度与显示时长一致，避免黑帧
+            clip_duration = self.beat_frame_duration  # 使用统一的持续时间
+            start_time = max(0, beat_time - 0.05)  # 减少提前时间，更精确对齐卡点
+            end_time = min(video.duration, start_time + clip_duration)
+            
+            # 确保片段长度足够
+            if end_time - start_time < self.beat_frame_duration:
+                # 如果到视频末尾长度不够，向前调整起始时间
+                start_time = max(0, end_time - self.beat_frame_duration)
+                print(f"调整卡点 {i+1} 时间范围: {start_time:.2f}s - {end_time:.2f}s")
 
             try:
                 frame_clip = video.subclipped(start_time, end_time)
@@ -163,17 +170,21 @@ class VideoProcessor:
                 except:
                     print(f"警告: 无法调整卡点片段尺寸")
 
-            # 设置卡点片段的显示持续时间（重要！）
-            try:
-                frame_clip = frame_clip.with_duration(self.beat_frame_duration)
-            except AttributeError:
+            # 验证片段持续时间，只有在需要时才调整
+            actual_duration = frame_clip.duration
+            if abs(actual_duration - self.beat_frame_duration) > 0.01:  # 允许小的误差
                 try:
-                    frame_clip = frame_clip.set_duration(self.beat_frame_duration)
-                except:
-                    print(f"警告: 无法设置卡点片段持续时间")
+                    frame_clip = frame_clip.with_duration(self.beat_frame_duration)
+                    print(f"调整卡点 {i+1} 持续时间: {actual_duration:.2f}s -> {self.beat_frame_duration}s")
+                except AttributeError:
+                    try:
+                        frame_clip = frame_clip.set_duration(self.beat_frame_duration)
+                        print(f"调整卡点 {i+1} 持续时间: {actual_duration:.2f}s -> {self.beat_frame_duration}s")
+                    except:
+                        print(f"警告: 无法设置卡点片段持续时间，使用原始时长: {actual_duration:.2f}s")
 
-            # 添加简单的缩放效果作为转场
-            if i > 0:  # 从第二个卡点开始添加缩放效果
+            # 添加改进的缩放效果作为转场
+            if i > 0:  # 重新启用优化后的缩放效果
                 frame_clip = self._add_simple_zoom_effect(frame_clip)
 
             beat_clips.append(frame_clip)
@@ -182,37 +193,67 @@ class VideoProcessor:
         return beat_clips
 
     def _add_simple_zoom_effect(self, clip):
-        """使用 MoviePy 2.x 的 transform 方法添加动态缩放效果"""
+        """使用 MoviePy 2.x 的 transform 方法添加安全的动态缩放效果"""
         try:
             # 使用 transform 方法来实现基于时间的动态缩放 (MoviePy 2.x 正确 API)
             if hasattr(clip, 'transform') and cv2 is not None:
-                def dynamic_zoom(get_frame, t):
-                    """基于时间的动态缩放函数"""
-                    frame = get_frame(t)
-                    h, w = frame.shape[:2]
+                def safe_dynamic_zoom(get_frame, t):
+                    """安全的基于时间的动态缩放函数"""
+                    try:
+                        frame = get_frame(t)
+                        if frame is None:
+                            return frame
+                        
+                        h, w = frame.shape[:2]
+                        
+                        # 确保时间在有效范围内
+                        duration = clip.duration if hasattr(clip, 'duration') and clip.duration else self.beat_frame_duration
+                        if duration <= 0:
+                            return frame
+                        
+                        # 安全的时间进度计算，避免边界问题
+                        safe_t = max(0, min(t, duration - 0.001))  # 确保在有效范围内
+                        progress = safe_t / duration  # 获取当前时间在片段中的进度 (0-1)
+                        
+                        # 使用更小的缩放比例避免黑屏：从1.0到1.03再回到1.0
+                        scale = 1.0 + 0.03 * math.sin(progress * 2 * math.pi)
+                        
+                        # 确保缩放比例在安全范围内
+                        scale = max(1.0, min(scale, 1.05))
+                        
+                        new_h, new_w = int(h * scale), int(w * scale)
+                        
+                        # 确保新尺寸有效
+                        if new_h <= 0 or new_w <= 0:
+                            return frame
+                        
+                        # 放大图像
+                        resized_frame = cv2.resize(frame, (new_w, new_h))
+                        
+                        # 安全的中心裁剪，添加边界检查
+                        start_x = max(0, (new_w - w) // 2)
+                        start_y = max(0, (new_h - h) // 2)
+                        end_x = min(new_w, start_x + w)
+                        end_y = min(new_h, start_y + h)
+                        
+                        # 确保裁剪区域有效
+                        if end_x <= start_x or end_y <= start_y:
+                            return frame
+                        
+                        cropped_frame = resized_frame[start_y:end_y, start_x:end_x]
+                        
+                        # 如果裁剪后尺寸不匹配，进行最终调整
+                        if cropped_frame.shape[:2] != (h, w):
+                            cropped_frame = cv2.resize(cropped_frame, (w, h))
+                        
+                        return cropped_frame
                     
-                    # 根据时间计算动态缩放比例
-                    # 从1.0逐渐放大到1.05，然后回到1.0，形成一个缩放循环
-                    duration = clip.duration if hasattr(clip, 'duration') and clip.duration else self.beat_frame_duration
-                    progress = (t % duration) / duration  # 获取当前时间在片段中的进度 (0-1)
-                    
-                    # 使用正弦波形实现平滑的缩放动画：从1.0到1.05再回到1.0
-                    scale = 1.0 + 0.05 * math.sin(progress * 2 * math.pi)
-                    
-                    new_h, new_w = int(h * scale), int(w * scale)
-                    
-                    # 放大图像
-                    resized_frame = cv2.resize(frame, (new_w, new_h))
-                    
-                    # 从中心裁剪回原始大小
-                    start_x = (new_w - w) // 2
-                    start_y = (new_h - h) // 2
-                    cropped_frame = resized_frame[start_y:start_y+h, start_x:start_x+w]
-                    
-                    return cropped_frame
+                    except Exception as e:
+                        print(f"缩放效果处理出错: {e}, 返回原始帧")
+                        return get_frame(t)  # 出错时返回原始帧
                 
-                print("使用 MoviePy 2.x transform 方法添加动态缩放效果")
-                zoom_clip = clip.transform(dynamic_zoom)
+                print("使用优化的 MoviePy 2.x transform 方法添加安全缩放效果")
+                zoom_clip = clip.transform(safe_dynamic_zoom)
                 return zoom_clip
             
             # 回退：尝试使用基于PIL的动态缩放 (如果cv2不可用但有PIL)
@@ -221,46 +262,74 @@ class VideoProcessor:
                     from PIL import Image
                     import numpy as np
                     
-                    def pil_dynamic_zoom(get_frame, t):
-                        """使用PIL的基于时间的动态缩放函数"""
-                        frame = get_frame(t)
-                        img = Image.fromarray(frame)
-                        base_size = img.size
+                    def safe_pil_dynamic_zoom(get_frame, t):
+                        """使用PIL的安全动态缩放函数"""
+                        try:
+                            frame = get_frame(t)
+                            if frame is None:
+                                return frame
+                            
+                            img = Image.fromarray(frame)
+                            base_size = img.size
+                            
+                            # 确保时间在有效范围内
+                            duration = clip.duration if hasattr(clip, 'duration') and clip.duration else self.beat_frame_duration
+                            if duration <= 0:
+                                img.close()
+                                return frame
+                            
+                            # 安全的时间进度计算
+                            safe_t = max(0, min(t, duration - 0.001))
+                            progress = safe_t / duration
+                            
+                            # 使用更小的缩放比例避免黑屏：从1.0到1.03再回到1.0
+                            zoom_ratio = 0.03 * math.sin(progress * 2 * math.pi)
+                            scale = 1.0 + zoom_ratio
+                            
+                            # 确保缩放比例在安全范围内
+                            scale = max(1.0, min(scale, 1.05))
+                            
+                            new_size = [
+                                max(1, math.ceil(img.size[0] * scale)),
+                                max(1, math.ceil(img.size[1] * scale))
+                            ]
+                            
+                            # 确保新尺寸是偶数且有效
+                            new_size[0] = new_size[0] + (new_size[0] % 2)
+                            new_size[1] = new_size[1] + (new_size[1] % 2)
+                            
+                            # 调整图像大小
+                            img = img.resize(new_size, Image.LANCZOS)
+                            
+                            # 安全的裁剪到原始大小
+                            x = max(0, (new_size[0] - base_size[0]) // 2)
+                            y = max(0, (new_size[1] - base_size[1]) // 2)
+                            
+                            # 确保裁剪坐标有效
+                            x2 = min(new_size[0], x + base_size[0])
+                            y2 = min(new_size[1], y + base_size[1])
+                            
+                            if x2 <= x or y2 <= y:
+                                img.close()
+                                return frame
+                            
+                            cropped = img.crop([x, y, x2, y2])
+                            
+                            # 确保最终尺寸正确
+                            if cropped.size != base_size:
+                                cropped = cropped.resize(base_size, Image.LANCZOS)
+                            
+                            result = np.array(cropped)
+                            img.close()
+                            cropped.close()
+                            return result
                         
-                        # 根据时间计算动态缩放比例
-                        duration = clip.duration if hasattr(clip, 'duration') and clip.duration else self.beat_frame_duration
-                        progress = (t % duration) / duration
-                        
-                        # 使用正弦波形实现平滑的缩放动画
-                        zoom_ratio = 0.05 * math.sin(progress * 2 * math.pi)
-                        scale = 1.0 + zoom_ratio
-                        
-                        new_size = [
-                            math.ceil(img.size[0] * scale),
-                            math.ceil(img.size[1] * scale)
-                        ]
-                        
-                        # 确保新尺寸是偶数
-                        new_size[0] = new_size[0] + (new_size[0] % 2)
-                        new_size[1] = new_size[1] + (new_size[1] % 2)
-                        
-                        # 调整图像大小
-                        img = img.resize(new_size, Image.LANCZOS)
-                        
-                        # 裁剪到原始大小
-                        x = math.ceil((new_size[0] - base_size[0]) / 2)
-                        y = math.ceil((new_size[1] - base_size[1]) / 2)
-                        
-                        img = img.crop([
-                            x, y, new_size[0] - x, new_size[1] - y
-                        ]).resize(base_size, Image.LANCZOS)
-                        
-                        result = np.array(img)
-                        img.close()
-                        return result
+                        except Exception as e:
+                            print(f"PIL缩放效果处理出错: {e}, 返回原始帧")
+                            return get_frame(t)  # 出错时返回原始帧
                     
-                    print("使用PIL实现动态缩放效果")
-                    zoom_clip = clip.transform(pil_dynamic_zoom)
+                    print("使用优化的PIL实现安全动态缩放效果")
+                    zoom_clip = clip.transform(safe_pil_dynamic_zoom)
                     return zoom_clip
                     
                 except ImportError:
@@ -269,42 +338,85 @@ class VideoProcessor:
             
             # 回退：使用 image_transform 方法 (MoviePy 2.x 的正确 API) - 静态缩放
             if hasattr(clip, 'image_transform') and cv2 is not None:
-                def zoom_function(frame):
-                    """对每一帧应用缩放效果"""
-                    h, w = frame.shape[:2]
-                    scale = 1.03  # 轻微放大3%
-                    new_h, new_w = int(h * scale), int(w * scale)
+                def safe_zoom_function(frame):
+                    """对每一帧应用安全的缩放效果"""
+                    try:
+                        if frame is None:
+                            return frame
+                        
+                        h, w = frame.shape[:2]
+                        scale = 1.03  # 轻微放大3%
+                        new_h, new_w = max(1, int(h * scale)), max(1, int(w * scale))
+                        
+                        # 确保新尺寸有效
+                        if new_h <= 0 or new_w <= 0:
+                            return frame
+                        
+                        # 放大图像
+                        resized_frame = cv2.resize(frame, (new_w, new_h))
+                        
+                        # 安全的中心裁剪
+                        start_x = max(0, (new_w - w) // 2)
+                        start_y = max(0, (new_h - h) // 2)
+                        end_x = min(new_w, start_x + w)
+                        end_y = min(new_h, start_y + h)
+                        
+                        if end_x <= start_x or end_y <= start_y:
+                            return frame
+                        
+                        cropped_frame = resized_frame[start_y:end_y, start_x:end_x]
+                        
+                        # 确保最终尺寸正确
+                        if cropped_frame.shape[:2] != (h, w):
+                            cropped_frame = cv2.resize(cropped_frame, (w, h))
+                        
+                        return cropped_frame
                     
-                    # 放大图像
-                    resized_frame = cv2.resize(frame, (new_w, new_h))
-                    
-                    # 从中心裁剪回原始大小
-                    start_x = (new_w - w) // 2
-                    start_y = (new_h - h) // 2
-                    cropped_frame = resized_frame[start_y:start_y+h, start_x:start_x+w]
-                    
-                    return cropped_frame
+                    except Exception as e:
+                        print(f"静态缩放处理出错: {e}, 返回原始帧")
+                        return frame
                 
-                print("使用 image_transform 方法添加静态缩放效果")
-                zoom_clip = clip.image_transform(zoom_function)
+                print("使用优化的 image_transform 方法添加安全静态缩放效果")
+                zoom_clip = clip.image_transform(safe_zoom_function)
                 return zoom_clip
             
             # 回退到 fl_image 方法（如果存在）
             elif hasattr(clip, 'fl_image') and cv2 is not None:
-                def static_zoom_function(frame):
-                    """静态缩放函数"""
-                    h, w = frame.shape[:2]
-                    scale = 1.03  # 轻微放大3%
-                    new_h, new_w = int(h * scale), int(w * scale)
+                def safe_static_zoom_function(frame):
+                    """安全的静态缩放函数"""
+                    try:
+                        if frame is None:
+                            return frame
+                        
+                        h, w = frame.shape[:2]
+                        scale = 1.03  # 轻微放大3%
+                        new_h, new_w = max(1, int(h * scale)), max(1, int(w * scale))
+                        
+                        if new_h <= 0 or new_w <= 0:
+                            return frame
+                        
+                        resized_frame = cv2.resize(frame, (new_w, new_h))
+                        start_x = max(0, (new_w - w) // 2)
+                        start_y = max(0, (new_h - h) // 2)
+                        end_x = min(new_w, start_x + w)
+                        end_y = min(new_h, start_y + h)
+                        
+                        if end_x <= start_x or end_y <= start_y:
+                            return frame
+                        
+                        cropped_frame = resized_frame[start_y:end_y, start_x:end_x]
+                        
+                        if cropped_frame.shape[:2] != (h, w):
+                            cropped_frame = cv2.resize(cropped_frame, (w, h))
+                        
+                        return cropped_frame
                     
-                    resized_frame = cv2.resize(frame, (new_w, new_h))
-                    start_x = (new_w - w) // 2
-                    start_y = (new_h - h) // 2
-                    cropped_frame = resized_frame[start_y:start_y+h, start_x:start_x+w]
-                    return cropped_frame
+                    except Exception as e:
+                        print(f"fl_image缩放处理出错: {e}, 返回原始帧")
+                        return frame
                 
-                print("使用 fl_image 方法添加缩放效果")
-                zoom_clip = clip.fl_image(static_zoom_function)
+                print("使用优化的 fl_image 方法添加安全缩放效果")
+                zoom_clip = clip.fl_image(safe_static_zoom_function)
                 return zoom_clip
             
             # 最终回退到基本 resize 方法
@@ -328,6 +440,177 @@ class VideoProcessor:
                 
         except Exception as e:
             print(f"缩放效果失败: {e}")
+            return clip
+
+    def _add_fade_effects(self, clip, fade_duration):
+        """
+        为视频片段添加淡入淡出效果
+        
+        参数:
+        - clip: 视频片段
+        - fade_duration: 淡入淡出时长（秒）
+        
+        返回:
+        - 添加了淡入淡出效果的视频片段
+        """
+        try:
+            # 确保淡入淡出时长不超过片段总时长的一半
+            max_fade = clip.duration / 3  # 最多占用片段时长的1/3
+            actual_fade = min(fade_duration, max_fade)
+            
+            if actual_fade <= 0:
+                print(f"警告: 片段时长太短，无法添加淡入淡出效果")
+                return clip
+            
+            # 添加淡入淡出效果
+            if hasattr(clip, 'with_effects'):
+                # MoviePy 2.x 新API
+                try:
+                    from moviepy.video.fx import FadeIn, FadeOut
+                    clip_with_fade = clip.with_effects([FadeIn(actual_fade), FadeOut(actual_fade)])
+                    print(f"使用 with_effects 添加淡入淡出效果: {actual_fade:.2f}s")
+                    return clip_with_fade
+                except ImportError:
+                    print("MoviePy FadeIn/FadeOut 效果不可用，尝试其他方法")
+            
+            # 尝试使用 fadein/fadeout 方法
+            if hasattr(clip, 'fadein') and hasattr(clip, 'fadeout'):
+                try:
+                    clip_with_fade = clip.fadein(actual_fade).fadeout(actual_fade)
+                    print(f"使用 fadein/fadeout 方法添加淡入淡出效果: {actual_fade:.2f}s")
+                    return clip_with_fade
+                except Exception as fade_error:
+                    print(f"fadein/fadeout 方法失败: {fade_error}")
+            
+            # 尝试使用 crossfadein/crossfadeout
+            if hasattr(clip, 'crossfadein') and hasattr(clip, 'crossfadeout'):
+                try:
+                    clip_with_fade = clip.crossfadein(actual_fade).crossfadeout(actual_fade)
+                    print(f"使用 crossfadein/crossfadeout 方法添加淡入淡出效果: {actual_fade:.2f}s")
+                    return clip_with_fade
+                except Exception as crossfade_error:
+                    print(f"crossfadein/crossfadeout 方法失败: {crossfade_error}")
+            
+            # 手动实现淡入淡出效果（使用透明度）
+            try:
+                def fade_function(get_frame, t):
+                    frame = get_frame(t)
+                    if frame is None:
+                        return frame
+                    
+                    duration = clip.duration
+                    alpha = 1.0
+                    
+                    # 淡入效果
+                    if t < actual_fade:
+                        alpha = t / actual_fade
+                    # 淡出效果
+                    elif t > duration - actual_fade:
+                        alpha = (duration - t) / actual_fade
+                    
+                    # 确保alpha在有效范围内
+                    alpha = max(0.0, min(1.0, alpha))
+                    
+                    # 应用透明度
+                    if alpha < 1.0:
+                        frame = (frame * alpha).astype(np.uint8)
+                    
+                    return frame
+                
+                if hasattr(clip, 'transform'):
+                    clip_with_fade = clip.transform(fade_function)
+                    print(f"使用手动transform实现淡入淡出效果: {actual_fade:.2f}s")
+                    return clip_with_fade
+                else:
+                    print("无法实现淡入淡出效果，返回原始片段")
+                    return clip
+                    
+            except Exception as manual_error:
+                print(f"手动淡入淡出效果失败: {manual_error}")
+                return clip
+                
+        except Exception as e:
+            print(f"添加淡入淡出效果失败: {e}")
+            return clip
+
+    def _add_fade_in(self, clip, fade_duration):
+        """
+        为视频片段添加淡入效果
+        
+        参数:
+        - clip: 视频片段
+        - fade_duration: 淡入时长（秒）
+        
+        返回:
+        - 添加了淡入效果的视频片段
+        """
+        try:
+            # 确保淡入时长不超过片段总时长的一半
+            max_fade = clip.duration / 2
+            actual_fade = min(fade_duration, max_fade)
+            
+            if actual_fade <= 0:
+                print(f"警告: 片段时长太短，无法添加淡入效果")
+                return clip
+            
+            # 添加淡入效果
+            if hasattr(clip, 'with_effects'):
+                # MoviePy 2.x 新API
+                try:
+                    from moviepy.video.fx import FadeIn
+                    clip_with_fade = clip.with_effects([FadeIn(actual_fade)])
+                    print(f"使用 with_effects 添加淡入效果: {actual_fade:.2f}s")
+                    return clip_with_fade
+                except ImportError:
+                    print("MoviePy FadeIn 效果不可用，尝试其他方法")
+            
+            # 尝试使用 fadein 方法
+            if hasattr(clip, 'fadein'):
+                try:
+                    clip_with_fade = clip.fadein(actual_fade)
+                    print(f"使用 fadein 方法添加淡入效果: {actual_fade:.2f}s")
+                    return clip_with_fade
+                except Exception as fade_error:
+                    print(f"fadein 方法失败: {fade_error}")
+            
+            # 尝试使用 crossfadein
+            if hasattr(clip, 'crossfadein'):
+                try:
+                    clip_with_fade = clip.crossfadein(actual_fade)
+                    print(f"使用 crossfadein 方法添加淡入效果: {actual_fade:.2f}s")
+                    return clip_with_fade
+                except Exception as crossfade_error:
+                    print(f"crossfadein 方法失败: {crossfade_error}")
+            
+            # 手动实现淡入效果
+            try:
+                def fade_in_function(get_frame, t):
+                    frame = get_frame(t)
+                    if frame is None:
+                        return frame
+                    
+                    # 淡入效果
+                    if t < actual_fade:
+                        alpha = t / actual_fade
+                        alpha = max(0.0, min(1.0, alpha))
+                        frame = (frame * alpha).astype(np.uint8)
+                    
+                    return frame
+                
+                if hasattr(clip, 'transform'):
+                    clip_with_fade = clip.transform(fade_in_function)
+                    print(f"使用手动transform实现淡入效果: {actual_fade:.2f}s")
+                    return clip_with_fade
+                else:
+                    print("无法实现淡入效果，返回原始片段")
+                    return clip
+                    
+            except Exception as manual_error:
+                print(f"手动淡入效果失败: {manual_error}")
+                return clip
+                
+        except Exception as e:
+            print(f"添加淡入效果失败: {e}")
             return clip
 
     def _add_timer_to_video(self, video, speed_factor, font_size):
@@ -445,46 +728,75 @@ class VideoProcessor:
                 return video
 
     def _combine_clips(self, beat_clips, main_video):
-        """组合所有视频片段 - 简化版本"""
+        """组合所有视频片段 - 带淡入淡出效果"""
         all_clips = []
+        fade_duration = self.fade_duration  # 使用类属性中的淡入淡出时长
 
-        print(f"准备组合 {len(beat_clips)} 个卡点片段和1个主视频")
+        print(f"准备组合 {len(beat_clips)} 个卡点片段和1个主视频，添加淡入淡出效果")
 
-        # 确保所有卡点片段都有相同的尺寸
+        # 确保所有卡点片段都有相同的尺寸并验证内容，添加淡入淡出效果
         for i, clip in enumerate(beat_clips):
             try:
+                # 验证片段是否有效
+                if clip.duration <= 0:
+                    print(f"警告: 卡点片段 {i + 1} 持续时间无效: {clip.duration}")
+                    continue
+                
                 # 强制统一尺寸
                 clip = clip.resized(self.output_size)
-                all_clips.append(clip)
-                print(f"卡点片段 {i + 1}: 尺寸 {clip.size}, 持续时间 {clip.duration:.2f}s")
+                
+                # 验证片段内容（检查是否为纯黑帧）
+                try:
+                    # 获取第一帧进行验证
+                    first_frame = clip.get_frame(0)
+                    if first_frame is not None and first_frame.mean() > 5:  # 避免纯黑帧
+                        # 添加淡入淡出效果
+                        clip_with_fade = self._add_fade_effects(clip, fade_duration)
+                        all_clips.append(clip_with_fade)
+                        print(f"卡点片段 {i + 1}: 尺寸 {clip.size}, 持续时间 {clip.duration:.2f}s, 已添加淡入淡出 ✓")
+                    else:
+                        print(f"警告: 卡点片段 {i + 1} 可能是黑帧，跳过")
+                except Exception as frame_e:
+                    print(f"无法验证卡点片段 {i + 1} 的帧内容: {frame_e}")
+                    # 仍然添加，但标记警告
+                    clip_with_fade = self._add_fade_effects(clip, fade_duration)
+                    all_clips.append(clip_with_fade)
+                    print(f"卡点片段 {i + 1}: 尺寸 {clip.size}, 持续时间 {clip.duration:.2f}s, 已添加淡入淡出 (未验证)")
+                    
             except Exception as e:
                 print(f"处理卡点片段 {i + 1} 时出错: {e}")
                 try:
                     clip = clip.resize(self.output_size)
-                    all_clips.append(clip)
+                    clip_with_fade = self._add_fade_effects(clip, fade_duration)
+                    all_clips.append(clip_with_fade)
                 except:
                     print(f"跳过卡点片段 {i + 1}")
                     continue
 
-        # 确保主视频也有正确的尺寸
+        # 确保主视频也有正确的尺寸，并添加淡入效果
         try:
             main_video = main_video.resized(self.output_size)
-            print(f"主视频: 尺寸 {main_video.size}, 持续时间 {main_video.duration:.2f}s")
+            # 只给主视频添加淡入效果（开始时）
+            main_video_with_fade = self._add_fade_in(main_video, fade_duration)
+            print(f"主视频: 尺寸 {main_video.size}, 持续时间 {main_video.duration:.2f}s, 已添加淡入效果")
         except Exception as e:
             print(f"调整主视频尺寸时出错: {e}")
             try:
                 main_video = main_video.resize(self.output_size)
+                main_video_with_fade = self._add_fade_in(main_video, fade_duration)
             except:
                 print("警告: 无法调整主视频尺寸")
+                main_video_with_fade = main_video
 
-        # 不添加任何效果，直接使用主视频
-        all_clips.append(main_video)
+        # 添加主视频到片段列表
+        all_clips.append(main_video_with_fade)
 
-        print(f"总共 {len(all_clips)} 个片段准备连接")
+        print(f"总共 {len(all_clips)} 个片段准备连接（含淡入淡出效果）")
 
-        # 连接所有片段
+        # 连接所有片段，使用安全的参数避免黑帧
         try:
-            final_video = concatenate_videoclips(all_clips)
+            # 使用method='compose'确保更好的兼容性，避免黑屏
+            final_video = concatenate_videoclips(all_clips, method='compose')
             print(f"成功连接所有片段，最终视频长度: {final_video.duration:.2f}s")
             return final_video
         except Exception as e:
@@ -511,8 +823,8 @@ class VideoProcessor:
                     # 如果修复失败，尝试使用原始片段
                     fixed_clips.append(clip)
 
-            # 再次尝试连接
-            final_video = concatenate_videoclips(fixed_clips)
+            # 再次尝试连接，使用安全参数
+            final_video = concatenate_videoclips(fixed_clips, method='compose')
             print(f"修复后成功连接，最终视频长度: {final_video.duration:.2f}s")
             return final_video
 
