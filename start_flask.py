@@ -23,7 +23,7 @@ def check_dependencies():
 
 def check_music_files():
     """检查音乐文件"""
-    music_files = ["jiggy boogy.mp3", "jiggy boogy2.mp3"]
+    music_files = ["jiggy boogy.mp3", "bgm_mbz.mp3"]
     missing_files = []
     
     for music_file in music_files:

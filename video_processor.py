@@ -121,8 +121,13 @@ class VideoProcessor:
             else:
                 final_clip = pip_clip
 
+
             # 保存最终视频
-            final_clip.write_videofile(output_path, logger=None)
+            temp_output_path = output_path.replace(".mp4", "_temp.mp4")
+            final_clip.write_videofile(temp_output_path, logger=None)
+
+            success = self._add_music_with_ffmpeg(temp_output_path, output_path, "bgm_mbz.mp3")
+
             logger.info(f"视频处理完成，保存至: {output_path}")
 
             # 清理资源

@@ -214,7 +214,7 @@ class VideoProcessor:
     async def add_background_music_maozibi(self, input_path: str, output_path: str) -> bool:
         """为maozibi视频添加背景音乐，使用jiggy boogy2.mp3"""
         try:
-            music_path = str(Path(__file__).parent / "jiggy boogy2.mp3")
+            music_path = str(Path(__file__).parent / "bgm_mbz.mp3")
             if not os.path.exists(music_path):
                 raise Exception("背景音乐文件jiggy boogy2.mp3不存在")
             
