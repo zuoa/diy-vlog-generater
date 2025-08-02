@@ -10,4 +10,4 @@ services:
       - ./data:/data
     environment:
       - "TZ=Asia/Shanghai"
-      - "APP_HOST=http://diy.cod.vision"
+      - "APP_HOST=https://diy.cod.vision"
