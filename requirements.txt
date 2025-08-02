@@ -3,7 +3,7 @@ werkzeug
 ffmpeg-python==0.2.0
 qrcode[pil]==7.4.2
 Pillow==10.1.0
-moviepy
+moviepy==2.2.1
 gunicorn==21.2.0
 python-dotenv==1.0.0
-peewee==3.17.0
+peewee

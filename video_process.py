@@ -12,51 +12,74 @@ from pathlib import Path
 import asyncio
 import subprocess
 
-import ffmpeg
 import qrcode
+
+# MoviePy v2 导入
+try:
+    from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, TextClip, concatenate_videoclips, concatenate_audioclips
+except ImportError as e:
+    print(f"MoviePy 导入错误: {e}")
+    print("请确保 MoviePy v2 已正确安装: pip install moviepy==2.2.1")
 
 
 class VideoProcessor:
-    """视频处理类"""
+    """视频处理类 - 使用 MoviePy 优化"""
     
     def __init__(self):
         self.temp_dir = tempfile.mkdtemp()
+        # 设置 MoviePy 的默认线程数以提高性能
+        os.environ.setdefault('MOVIEPY_NUMTHREADS', '4')
     
     def __del__(self):
         """清理临时目录"""
         if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    async def check_ffmpeg(self) -> bool:
-        """检查ffmpeg是否可用"""
-        try:
-            ffmpeg_paths = ['ffmpeg', '/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg']
-            
-            for ffmpeg_path in ffmpeg_paths:
+    def _cleanup_clips(self, *clips):
+        """安全地清理视频剪辑以释放内存"""
+        for clip in clips:
+            if clip is not None:
                 try:
-                    result = subprocess.run([ffmpeg_path, '-version'], 
-                                          capture_output=True, text=True, timeout=10)
-                    if result.returncode == 0:
-                        print(f"FFmpeg found at: {ffmpeg_path}")
-                        return True
-                except FileNotFoundError:
-                    continue
-            
-            print("FFmpeg paths checked:", ffmpeg_paths)
-            return False
-            
-        except subprocess.TimeoutExpired:
-            print("FFmpeg check timed out")
-            return False
-        except Exception as e:
-            print(f"FFmpeg check error: {e}")
-            return False
+                    clip.close()
+                except Exception:
+                    pass  # 忽略清理错误
+    
+    async def check_ffmpeg(self) -> bool:
+        """检查moviepy/ffmpeg是否可用"""
+        try:
+            # 尝试创建一个简单的视频剪辑来测试moviepy是否正常工作
+            test_clip = VideoFileClip("test.mp4", logger=None) if os.path.exists("test.mp4") else None
+            if test_clip:
+                test_clip.close()
+            print("MoviePy is available and ready to use")
+            return True
+        except Exception:
+            # 如果moviepy不可用，回退到检查ffmpeg
+            try:
+                ffmpeg_paths = ['ffmpeg', '/usr/bin/ffmpeg', '/usr/local/bin/ffmpeg']
+                
+                for ffmpeg_path in ffmpeg_paths:
+                    try:
+                        result = subprocess.run([ffmpeg_path, '-version'], 
+                                              capture_output=True, text=True, timeout=10)
+                        if result.returncode == 0:
+                            print(f"FFmpeg found at: {ffmpeg_path}")
+                            return True
+                    except FileNotFoundError:
+                        continue
+                
+                print("MoviePy/FFmpeg not available")
+                return False
+                
+            except Exception as e:
+                print(f"Video processing check error: {e}")
+                return False
     
     async def get_video_duration(self, video_path: str) -> float:
         """获取视频时长"""
         try:
-            probe = ffmpeg.probe(video_path)
-            duration = float(probe['streams'][0]['duration'])
+            with VideoFileClip(video_path) as clip:
+                duration = clip.duration
             return duration
         except Exception as e:
             raise Exception(f"无法获取视频时长: {str(e)}")
@@ -65,23 +88,23 @@ class VideoProcessor:
                                   start_time: float, duration: float) -> bool:
         """提取视频片段"""
         try:
-            (
-                ffmpeg
-                .input(input_path, ss=start_time, t=duration, accurate_seek=None)
-                .output(output_path, 
-                       vcodec='libx264', 
-                       acodec='aac',
-                       **{
-                           'avoid_negative_ts': 'make_zero',
-                           'fflags': '+genpts',
-                           'preset': 'medium',
-                           'crf': '18',
-                           'pix_fmt': 'yuv420p',
-                           'movflags': '+faststart'
-                       })
-                .overwrite_output()
-                .run(quiet=True)
-            )
+            with VideoFileClip(input_path) as clip:
+                # 提取指定时间段的视频片段
+                end_time = start_time + duration
+                segment = clip.subclipped(start_time, end_time)
+                
+                # 写入文件，使用优化的编码参数
+                segment.write_videofile(
+                    output_path,
+                    codec='libx264',
+                    audio_codec='aac',
+                    temp_audiofile=f"{output_path}_temp_audio.m4a",
+                    remove_temp=True,
+                    preset='fast',  # 使用 fast preset 提高速度
+                    ffmpeg_params=['-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'],  # 调整 CRF 平衡质量和速度
+                    logger=None
+                )
+                self._cleanup_clips(segment)
             return True
         except Exception as e:
             raise Exception(f"视频片段提取失败: {str(e)}")
@@ -90,28 +113,30 @@ class VideoProcessor:
                                output_path: str) -> bool:
         """拼接两个视频"""
         try:
-            concat_file = os.path.join(self.temp_dir, "concat_list.txt")
-            with open(concat_file, 'w', encoding='utf-8') as f:
-                f.write(f"file '{video1_path}'\n")
-                f.write(f"file '{video2_path}'\n")
+            # 使用 moviepy 加载两个视频
+            clip1 = VideoFileClip(video1_path)
+            clip2 = VideoFileClip(video2_path)
             
-            (
-                ffmpeg
-                .input(concat_file, format='concat', safe=0)
-                .output(output_path, 
-                       vcodec='libx264', 
-                       acodec='aac',
-                       **{
-                           'avoid_negative_ts': 'make_zero',
-                           'fflags': '+genpts',
-                           'preset': 'medium',
-                           'crf': '18',
-                           'pix_fmt': 'yuv420p',
-                           'movflags': '+faststart'
-                       })
-                .overwrite_output()
-                .run(quiet=True)
+            # 拼接视频
+            final_clip = concatenate_videoclips([clip1, clip2])
+            
+            # 写入输出文件
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile=f"{output_path}_temp_audio.m4a",
+                remove_temp=True,
+                preset='fast',  # 使用 fast preset 提高速度
+                ffmpeg_params=['-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'],  # 调整 CRF 平衡质量和速度
+
+                logger=None,
+                threads=4  # 使用多线程编码
             )
+            
+            # 清理资源
+            self._cleanup_clips(clip1, clip2, final_clip)
+            
             return True
         except Exception as e:
             raise Exception(f"视频拼接失败: {str(e)}")
@@ -120,14 +145,68 @@ class VideoProcessor:
         """为视频添加背景音乐"""
         try:
             music_path = str(Path(__file__).parent / "jiggy boogy.mp3")
-            video = ffmpeg.input(input_path)
-            audio = ffmpeg.input(music_path, stream_loop='-1')
-            (
-                ffmpeg
-                .output(video.video, audio.audio, output_path, **{'c:v': 'copy', 'c:a': 'aac', 'shortest': None})
-                .overwrite_output()
-                .run(quiet=True)
+            
+            # 加载视频和音频
+            video_clip = VideoFileClip(input_path)
+            audio_clip = AudioFileClip(music_path)
+            
+            # 如果音频比视频短，循环播放音频
+            if audio_clip.duration < video_clip.duration:
+                # 计算需要循环的次数
+                loops = int(video_clip.duration / audio_clip.duration) + 1
+                # 使用 concatenate_audioclips 创建循环效果，确保每个副本都是独立的
+                looped_clips = []
+                for i in range(loops):
+                    # 创建音频的独立副本以避免维度不匹配
+                    clip_copy = audio_clip.subclipped(0, audio_clip.duration)
+                    looped_clips.append(clip_copy)
+                
+                try:
+                    audio_clip = concatenate_audioclips(looped_clips)
+                except Exception as concat_error:
+                    # 如果拼接失败，使用简单的重复方法
+                    print(f"音频拼接失败，使用备用方法: {concat_error}")
+                    # 使用第一个音频片段，重复到所需长度
+                    single_duration = audio_clip.duration
+                    target_duration = video_clip.duration
+                    audio_clip = audio_clip.subclipped(0, min(single_duration, target_duration))
+                    if single_duration < target_duration:
+                        # 使用音频自身的loop功能
+                        audio_clip = audio_clip.loop(duration=target_duration)
+                
+                # 截取到确切的视频长度
+                audio_clip = audio_clip.subclipped(0, video_clip.duration)
+                
+                # 清理临时片段
+                for clip in looped_clips:
+                    try:
+                        clip.close()
+                    except:
+                        pass
+            else:
+                # 如果音频比视频长，截取音频
+                audio_clip = audio_clip.subclipped(0, video_clip.duration)
+            
+            # 将背景音乐添加到视频中
+            final_clip = video_clip.with_audio(audio_clip)
+            
+            # 写入输出文件
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile=f"{output_path}_temp_audio.m4a",
+                remove_temp=True,
+                preset='fast',  # 使用 fast preset 提高速度
+                ffmpeg_params=['-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'],  # 调整 CRF 平衡质量和速度
+
+                logger=None,
+                threads=4  # 使用多线程编码
             )
+            
+            # 清理资源
+            self._cleanup_clips(video_clip, audio_clip, final_clip)
+            
             return True
         except Exception as e:
             raise Exception(f"添加背景音乐失败: {str(e)}")
@@ -139,14 +218,67 @@ class VideoProcessor:
             if not os.path.exists(music_path):
                 raise Exception("背景音乐文件jiggy boogy2.mp3不存在")
             
-            video = ffmpeg.input(input_path)
-            audio = ffmpeg.input(music_path, stream_loop='-1')
-            (
-                ffmpeg
-                .output(video.video, audio.audio, output_path, **{'c:v': 'copy', 'c:a': 'aac', 'shortest': None})
-                .overwrite_output()
-                .run(quiet=True)
+            # 加载视频和音频
+            video_clip = VideoFileClip(input_path)
+            audio_clip = AudioFileClip(music_path)
+            
+            # 如果音频比视频短，循环播放音频
+            if audio_clip.duration < video_clip.duration:
+                # 计算需要循环的次数
+                loops = int(video_clip.duration / audio_clip.duration) + 1
+                # 使用 concatenate_audioclips 创建循环效果，确保每个副本都是独立的
+                looped_clips = []
+                for i in range(loops):
+                    # 创建音频的独立副本以避免维度不匹配
+                    clip_copy = audio_clip.subclipped(0, audio_clip.duration)
+                    looped_clips.append(clip_copy)
+                
+                try:
+                    audio_clip = concatenate_audioclips(looped_clips)
+                except Exception as concat_error:
+                    # 如果拼接失败，使用简单的重复方法
+                    print(f"音频拼接失败，使用备用方法: {concat_error}")
+                    # 使用第一个音频片段，重复到所需长度
+                    single_duration = audio_clip.duration
+                    target_duration = video_clip.duration
+                    audio_clip = audio_clip.subclipped(0, min(single_duration, target_duration))
+                    if single_duration < target_duration:
+                        # 使用音频自身的loop功能
+                        audio_clip = audio_clip.loop(duration=target_duration)
+                
+                # 截取到确切的视频长度
+                audio_clip = audio_clip.subclipped(0, video_clip.duration)
+                
+                # 清理临时片段
+                for clip in looped_clips:
+                    try:
+                        clip.close()
+                    except:
+                        pass
+            else:
+                # 如果音频比视频长，截取音频
+                audio_clip = audio_clip.subclipped(0, video_clip.duration)
+            
+            # 将背景音乐添加到视频中
+            final_clip = video_clip.with_audio(audio_clip)
+            
+            # 写入输出文件
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile=f"{output_path}_temp_audio.m4a",
+                remove_temp=True,
+                preset='fast',  # 使用 fast preset 提高速度
+                ffmpeg_params=['-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'],  # 调整 CRF 平衡质量和速度
+
+                logger=None,
+                threads=4  # 使用多线程编码
             )
+            
+            # 清理资源
+            self._cleanup_clips(video_clip, audio_clip, final_clip)
+            
             return True
         except Exception as e:
             raise Exception(f"添加背景音乐失败: {str(e)}")
@@ -155,38 +287,43 @@ class VideoProcessor:
                                         output_path: str) -> bool:
         """创建画中画效果"""
         try:
-            probe = ffmpeg.probe(main_video_path)
-            video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-            if not video_stream:
-                raise Exception("无法获取主视频信息")
+            # 加载主视频和覆盖视频
+            main_clip = VideoFileClip(main_video_path)
+            overlay_clip = VideoFileClip(overlay_video_path)
             
-            main_width = int(video_stream['width'])
-            main_height = int(video_stream['height'])
+            # 获取主视频的尺寸
+            main_width, main_height = main_clip.size
             
+            # 计算覆盖视频的大小和位置
             overlay_width = main_width // 4
             overlay_height = main_height // 4
             overlay_x = main_width - overlay_width - 10
             overlay_y = 10
             
-            main_input = ffmpeg.input(main_video_path)
-            overlay_input = ffmpeg.input(overlay_video_path)
-            overlay_scaled = ffmpeg.filter(overlay_input, 'scale', overlay_width, overlay_height)
-            output = ffmpeg.filter([main_input, overlay_scaled], 'overlay', overlay_x, overlay_y)
+            # 调整覆盖视频的大小和位置
+            overlay_resized = overlay_clip.resized((overlay_width, overlay_height))
+            overlay_positioned = overlay_resized.with_position((overlay_x, overlay_y))
             
-            (
-                ffmpeg
-                .output(output, output_path,
-                       vcodec='libx264',
-                       acodec='aac',
-                       **{
-                           'preset': 'medium',
-                           'crf': '18',
-                           'pix_fmt': 'yuv420p',
-                           'movflags': '+faststart'
-                       })
-                .overwrite_output()
-                .run(quiet=True)
+            # 创建画中画效果
+            final_clip = CompositeVideoClip([main_clip, overlay_positioned])
+            
+            # 写入输出文件
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile=f"{output_path}_temp_audio.m4a",
+                remove_temp=True,
+                preset='fast',  # 使用 fast preset 提高速度
+                ffmpeg_params=['-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'],  # 调整 CRF 平衡质量和速度
+
+                logger=None,
+                threads=4  # 使用多线程编码
             )
+            
+            # 清理资源
+            self._cleanup_clips(main_clip, overlay_clip, overlay_resized, overlay_positioned, final_clip)
+            
             return True
         except Exception as e:
             raise Exception(f"画中画创建失败: {str(e)}")
@@ -195,49 +332,55 @@ class VideoProcessor:
                                                    output_path: str, score: str) -> bool:
         """创建带分数显示的画中画效果"""
         try:
-            probe = ffmpeg.probe(main_video_path)
-            video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-            if not video_stream:
-                raise Exception("无法获取主视频信息")
+            # 加载主视频和覆盖视频
+            main_clip = VideoFileClip(main_video_path)
+            overlay_clip = VideoFileClip(overlay_video_path)
             
-            main_width = int(video_stream['width'])
-            main_height = int(video_stream['height'])
+            # 获取主视频的尺寸
+            main_width, main_height = main_clip.size
             
+            # 计算覆盖视频的大小和位置
             overlay_width = main_width // 4
             overlay_height = main_height // 4
             overlay_x = main_width - overlay_width - 10
             overlay_y = 10
             
-            main_input = ffmpeg.input(main_video_path)
-            overlay_input = ffmpeg.input(overlay_video_path)
-            overlay_scaled = ffmpeg.filter(overlay_input, 'scale', overlay_width, overlay_height)
-            pip_output = ffmpeg.filter([main_input, overlay_scaled], 'overlay', overlay_x, overlay_y)
+            # 调整覆盖视频的大小和位置
+            overlay_resized = overlay_clip.resized((overlay_width, overlay_height))
+            overlay_positioned = overlay_resized.with_position((overlay_x, overlay_y))
             
+            # 创建画中画效果
+            pip_clip = CompositeVideoClip([main_clip, overlay_positioned])
+            
+            # 创建分数文本
             font_size = max(24, main_width // 40)
-            text_output = ffmpeg.filter(pip_output, 'drawtext',
-                                       text=score,
-                                       fontsize=font_size,
-                                       fontcolor='white',
-                                       x=20,
-                                       y=20,
-                                       box=1,
-                                       boxcolor='black@0.5',
-                                       boxborderw=5)
+            text_clip = TextClip(
+                score,
+                fontsize=font_size,
+                color='white',
+                font='Arial-Bold'
+            ).with_position((20, 20)).with_duration(pip_clip.duration)
             
-            (
-                ffmpeg
-                .output(text_output, output_path,
-                       vcodec='libx264',
-                       acodec='aac',
-                       **{
-                           'preset': 'medium',
-                           'crf': '18',
-                           'pix_fmt': 'yuv420p',
-                           'movflags': '+faststart'
-                       })
-                .overwrite_output()
-                .run(quiet=True)
+            # 合成最终视频（添加文本）
+            final_clip = CompositeVideoClip([pip_clip, text_clip])
+            
+            # 写入输出文件
+            final_clip.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile=f"{output_path}_temp_audio.m4a",
+                remove_temp=True,
+                preset='fast',  # 使用 fast preset 提高速度
+                ffmpeg_params=['-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'],  # 调整 CRF 平衡质量和速度
+
+                logger=None,
+                threads=4  # 使用多线程编码
             )
+            
+            # 清理资源
+            self._cleanup_clips(main_clip, overlay_clip, overlay_resized, overlay_positioned, pip_clip, text_clip, final_clip)
+            
             return True
         except Exception as e:
             raise Exception(f"带分数的画中画创建失败: {str(e)}")
@@ -269,11 +412,11 @@ class VideoProcessor:
             segment1_path = os.path.join(self.temp_dir, f"segment1_{unique_id}.mp4")
             segment2_path = os.path.join(self.temp_dir, f"segment2_{unique_id}.mp4")
             
-            segment_duration1 = min(10, duration1)
+            segment_duration1 = min(10, int(duration1))
             await self.extract_video_segment(video1_path, segment1_path, 0, segment_duration1)
             
-            segment_duration2 = min(10, duration2)
-            start_time2 = max(0, duration2 - segment_duration2)
+            segment_duration2 = min(10, int(duration2))
+            start_time2 = max(0, int(duration2) - segment_duration2)
             await self.extract_video_segment(video2_path, segment2_path, start_time2, segment_duration2)
             
             output_filename = f"merged_{unique_id}.mp4"
@@ -295,6 +438,7 @@ class VideoProcessor:
                 if os.path.exists(path):
                     os.remove(path)
             raise
+
 
     async def process_maozibi_videos(self, video0_data: bytes, video1_data: bytes) -> tuple[str, str]:
         """处理两个视频文件，创建画中画效果"""
