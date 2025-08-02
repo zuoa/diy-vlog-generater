@@ -17,11 +17,6 @@ echo "Initializing database..."
 # 或者: flask --app your_application_module:create_app() init-db
 flask init-db
 
-
-echo "Starting scheduler..."
-python scheduler.py &
-
-
 echo "Starting Gunicorn..."
 # 用 exec "$@" 来执行 CMD 中指定的命令，或者直接启动 Gunicorn
 # exec "$@"
