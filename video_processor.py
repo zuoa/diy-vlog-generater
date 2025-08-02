@@ -49,6 +49,7 @@ class VideoProcessor:
             print(f"⚠ 无法检查 FFmpeg: {e}")
             print("如果遇到视频处理问题，请确保已安装 FFmpeg")
             return False
+
     def create_pip_video(self, main_video_path, pip_video_path, output_path, text=None, text_font_size=16, text_position=(0, 0), pip_position='top-right', pip_scale=0.25):
         """
         创建画中画视频
@@ -92,13 +93,29 @@ class VideoProcessor:
                 else:
                     text_clip = text_clip.set_duration(pip_clip.duration)
                 
-                # 设置位置
-                if hasattr(text_clip, 'with_position'):
-                    text_clip = text_clip.with_position(text_position)
-                else:
-                    text_clip = text_clip.set_position(text_position)
+                # 创建文本背景
+                padding = 10  # 背景边距
+                bg_width = text_clip.size[0] + 2 * padding
+                bg_height = text_clip.size[1] + 2 * padding
                 
-                final_clip = CompositeVideoClip([pip_clip, text_clip])
+                # 创建半透明黑色背景
+                text_bg = ColorClip(
+                    size=(bg_width, bg_height),
+                    color=(0, 0, 0),  # 黑色背景
+                    duration=pip_clip.duration
+                ).with_opacity(0.7)  # 70%透明度
+                
+                # 将文本居中放在背景上
+                text_clip = text_clip.with_position('center')
+                text_with_bg = CompositeVideoClip([text_bg, text_clip])
+                
+                # 设置整个文本+背景的位置
+                if hasattr(text_with_bg, 'with_position'):
+                    text_with_bg = text_with_bg.with_position(text_position)
+                else:
+                    text_with_bg = text_with_bg.set_position(text_position)
+                
+                final_clip = CompositeVideoClip([pip_clip, text_with_bg])
             else:
                 final_clip = pip_clip
 
@@ -1588,7 +1605,7 @@ if __name__ == "__main__":
         video2_path = "/Users/yujian/Downloads/video1_20250802_140017.mp4"  # 第二个视频路径
         beat_times = [0.0, 4.5, 6.5, 9.8, 19, 23]  # 卡点时间数组 (秒)
 
-        processor.create_pip_video(video1_path, video2_path, "output/121212.mp4", "98", 18, (100,120) )
+        processor.create_pip_video(video1_path, video2_path, "output/121212.mp4", "98", 100, (20,20) )
 
         # 预览卡点 (可选)
         # processor.preview_beat_points(video1_path, beat_times)

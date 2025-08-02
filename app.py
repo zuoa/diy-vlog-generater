@@ -161,7 +161,7 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
         output_filename = f"mbz_processed_video_{task_id}.mp4"
         output_filepath = f"output/{output_filename}"
 
-        processor.process_maozibi_score_videos(video0_path, video1_path, score)
+        processor.create_pip_video(video0_path, video1_path, output_filepath, score, 100, (20, 20))
 
         # 生成视频访问URL
         video_url = f"{APP_HOST}/output/{output_filename}"
@@ -179,7 +179,6 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
         os.remove(video0_path)
         os.remove(video1_path)
         del processor
-        loop.close()
 
     except Exception as e:
         TaskStatus.update_task_status(task_id, status="error", message=f"处理失败: {str(e)}", progress=0)
