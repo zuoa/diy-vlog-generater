@@ -14,17 +14,17 @@ from typing import Dict
 
 from dotenv import load_dotenv
 from flask import Flask, request, render_template, redirect, url_for, jsonify, send_file, abort
+from peewee import *
 
+from database import TaskStatus, create_tables
 from utils import success
 # 导入视频处理相关的类
 from video_process import VideoProcessor
 
 load_dotenv()
+
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file size
-
-# 全局任务状态存储
-task_status: Dict[str, Dict] = {}
 
 
 APP_HOST = os.getenv("APP_HOST", "https://diy.cod.vision")
@@ -43,9 +43,7 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
     """后台处理两个视频的函数"""
     try:
         # 更新任务状态为处理中
-        task_status[task_id]["status"] = "processing"
-        task_status[task_id]["message"] = "正在处理视频..."
-        task_status[task_id]["progress"] = 20
+        TaskStatus.update_task_status(task_id, status="processing", message="正在处理视频...", progress=20)
 
         processor = VideoProcessor()
 
@@ -55,12 +53,10 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
         asyncio.set_event_loop(loop)
 
         if not loop.run_until_complete(processor.check_ffmpeg()):
-            task_status[task_id]["status"] = "error"
-            task_status[task_id]["message"] = "FFmpeg未安装或不可用"
+            TaskStatus.update_task_status(task_id, status="error", message="FFmpeg未安装或不可用")
             return
 
-        task_status[task_id]["progress"] = 40
-        task_status[task_id]["message"] = "正在分析视频..."
+        TaskStatus.update_task_status(task_id, progress=40, message="正在分析视频...")
 
         # 读取视频数据
         with open(video1_path, 'rb') as f:
@@ -73,19 +69,19 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
             processor.process_videos(video1_data, video2_data)
         )
 
-        task_status[task_id]["progress"] = 80
-        task_status[task_id]["message"] = "正在生成最终文件..."
+        TaskStatus.update_task_status(task_id, progress=80, message="正在生成最终文件...")
 
         # 生成视频访问URL
         video_url = f"http://8.215.28.241:721/output/{output_filename}"
 
         # 更新任务状态为完成
-        task_status[task_id]["status"] = "completed"
-        task_status[task_id]["message"] = "视频处理完成"
-        task_status[task_id]["progress"] = 100
-        task_status[task_id]["video_filename"] = output_filename
-        task_status[task_id]["video_url"] = video_url
-        task_status[task_id]["completed_at"] = datetime.now().isoformat()
+        TaskStatus.update_task_status(task_id,
+                         status="completed",
+                         message="视频处理完成",
+                         progress=100,
+                         video_filename=output_filename,
+                         video_url=video_url,
+                         completed_at=datetime.now())
 
         # 清理临时文件
         os.remove(video1_path)
@@ -94,9 +90,7 @@ def process_videos_background(task_id: str, video1_path: str, video2_path: str):
         loop.close()
 
     except Exception as e:
-        task_status[task_id]["status"] = "error"
-        task_status[task_id]["message"] = f"处理失败: {str(e)}"
-        task_status[task_id]["progress"] = 0
+        TaskStatus.update_task_status(task_id, status="error", message=f"处理失败: {str(e)}", progress=0)
         # 清理临时文件
         if os.path.exists(video1_path):
             os.remove(video1_path)
@@ -108,9 +102,7 @@ def process_maozibi_background(task_id: str, video0_path: str, video1_path: str)
     """后台处理maozibi视频的函数"""
     try:
         # 更新任务状态为处理中
-        task_status[task_id]["status"] = "processing"
-        task_status[task_id]["message"] = "正在处理maozibi视频..."
-        task_status[task_id]["progress"] = 20
+        TaskStatus.update_task_status(task_id, status="processing", message="正在处理maozibi视频...", progress=20)
 
         processor = VideoProcessor()
 
@@ -120,12 +112,10 @@ def process_maozibi_background(task_id: str, video0_path: str, video1_path: str)
         asyncio.set_event_loop(loop)
 
         if not loop.run_until_complete(processor.check_ffmpeg()):
-            task_status[task_id]["status"] = "error"
-            task_status[task_id]["message"] = "FFmpeg未安装或不可用"
+            TaskStatus.update_task_status(task_id, status="error", message="FFmpeg未安装或不可用")
             return
 
-        task_status[task_id]["progress"] = 40
-        task_status[task_id]["message"] = "正在分析视频..."
+        TaskStatus.update_task_status(task_id, progress=40, message="正在分析视频...")
 
         # 读取视频数据
         with open(video0_path, 'rb') as f:
@@ -138,19 +128,19 @@ def process_maozibi_background(task_id: str, video0_path: str, video1_path: str)
             processor.process_maozibi_videos(video0_data, video1_data)
         )
 
-        task_status[task_id]["progress"] = 80
-        task_status[task_id]["message"] = "正在生成最终文件..."
+        TaskStatus.update_task_status(task_id, progress=80, message="正在生成最终文件...")
 
         # 生成视频访问URL
         video_url = f"http://8.215.28.241:721/output/{output_filename}"
 
         # 更新任务状态为完成
-        task_status[task_id]["status"] = "completed"
-        task_status[task_id]["message"] = "maozibi视频处理完成"
-        task_status[task_id]["progress"] = 100
-        task_status[task_id]["video_filename"] = output_filename
-        task_status[task_id]["video_url"] = video_url
-        task_status[task_id]["completed_at"] = datetime.now().isoformat()
+        TaskStatus.update_task_status(task_id,
+                         status="completed",
+                         message="maozibi视频处理完成",
+                         progress=100,
+                         video_filename=output_filename,
+                         video_url=video_url,
+                         completed_at=datetime.now())
 
         # 清理临时文件
         os.remove(video0_path)
@@ -159,9 +149,7 @@ def process_maozibi_background(task_id: str, video0_path: str, video1_path: str)
         loop.close()
 
     except Exception as e:
-        task_status[task_id]["status"] = "error"
-        task_status[task_id]["message"] = f"处理失败: {str(e)}"
-        task_status[task_id]["progress"] = 0
+        TaskStatus.update_task_status(task_id, status="error", message=f"处理失败: {str(e)}", progress=0)
         # 清理临时文件
         if os.path.exists(video0_path):
             os.remove(video0_path)
@@ -173,9 +161,7 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
     """后台处理maozibi_score视频的函数"""
     try:
         # 更新任务状态为处理中
-        task_status[task_id]["status"] = "processing"
-        task_status[task_id]["message"] = "正在处理maozibi_score视频..."
-        task_status[task_id]["progress"] = 20
+        TaskStatus.update_task_status(task_id, status="processing", message="正在处理maozibi_score视频...", progress=20)
 
         processor = VideoProcessor()
 
@@ -185,12 +171,10 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
         asyncio.set_event_loop(loop)
 
         if not loop.run_until_complete(processor.check_ffmpeg()):
-            task_status[task_id]["status"] = "error"
-            task_status[task_id]["message"] = "FFmpeg未安装或不可用"
+            TaskStatus.update_task_status(task_id, status="error", message="FFmpeg未安装或不可用")
             return
 
-        task_status[task_id]["progress"] = 40
-        task_status[task_id]["message"] = "正在分析视频..."
+        TaskStatus.update_task_status(task_id, progress=40, message="正在分析视频...")
 
         # 读取视频数据
         with open(video0_path, 'rb') as f:
@@ -203,19 +187,19 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
             processor.process_maozibi_score_videos(video0_data, video1_data, score)
         )
 
-        task_status[task_id]["progress"] = 80
-        task_status[task_id]["message"] = "正在生成最终文件..."
+        TaskStatus.update_task_status(task_id, progress=80, message="正在生成最终文件...")
 
         # 生成视频访问URL
         video_url = f"http://8.215.28.241:721/output/{output_filename}"
 
         # 更新任务状态为完成
-        task_status[task_id]["status"] = "completed"
-        task_status[task_id]["message"] = "maozibi_score视频处理完成"
-        task_status[task_id]["progress"] = 100
-        task_status[task_id]["video_filename"] = output_filename
-        task_status[task_id]["video_url"] = video_url
-        task_status[task_id]["completed_at"] = datetime.now().isoformat()
+        TaskStatus.update_task_status(task_id,
+                         status="completed",
+                         message="maozibi_score视频处理完成",
+                         progress=100,
+                         video_filename=output_filename,
+                         video_url=video_url,
+                         completed_at=datetime.now())
 
         # 清理临时文件
         os.remove(video0_path)
@@ -224,9 +208,7 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
         loop.close()
 
     except Exception as e:
-        task_status[task_id]["status"] = "error"
-        task_status[task_id]["message"] = f"处理失败: {str(e)}"
-        task_status[task_id]["progress"] = 0
+        TaskStatus.update_task_status(task_id, status="error", message=f"处理失败: {str(e)}", progress=0)
         # 清理临时文件
         if os.path.exists(video0_path):
             os.remove(video0_path)
@@ -263,14 +245,10 @@ def process_videos_web():
     task_id = str(uuid.uuid4())
 
     # 初始化任务状态
-    task_status[task_id] = {
-        "status": "pending",
-        "message": "任务已创建，准备处理...",
-        "progress": 0,
-        "created_at": datetime.now().isoformat(),
-        "video_filename": None,
-        "video_url": None
-    }
+    TaskStatus.create_task_status(task_id,
+                      status="pending",
+                      message="任务已创建，准备处理...",
+                      progress=0)
 
     # 保存临时文件
     temp_dir = tempfile.mkdtemp()
@@ -286,11 +264,12 @@ def process_videos_web():
     # 启动后台任务
     executor.submit(process_videos_background, task_id, video1_path, video2_path)
 
+    task_data = TaskStatus.get_task_status(task_id)
     return success({
         "task_id": task_id,
         "status_url": status_url,
         "api_status_url": status_url,
-        "created_at": task_status[task_id]["created_at"]
+        "created_at": task_data["created_at"]
     })
 
 
@@ -318,14 +297,10 @@ def maozibi_web():
     task_id = str(uuid.uuid4())
 
     # 初始化任务状态
-    task_status[task_id] = {
-        "status": "pending",
-        "message": "任务已创建，等待处理...",
-        "progress": 0,
-        "created_at": datetime.now().isoformat(),
-        "video_filename": None,
-        "video_url": None
-    }
+    TaskStatus.create_task_status(task_id,
+                      status="pending",
+                      message="任务已创建，等待处理...",
+                      progress=0)
 
     # 保存临时文件
     temp_dir = tempfile.mkdtemp()
@@ -339,7 +314,7 @@ def maozibi_web():
     status_url = f"http://8.215.28.241:721/status/{task_id}"
 
     # 更新任务状态，包含状态页面URL
-    task_status[task_id]["status_url"] = status_url
+    TaskStatus.update_task_status(task_id, status_url=status_url)
 
     # 启动后台任务
     executor.submit(process_maozibi_background, task_id, video0_path, video1_path)
@@ -375,14 +350,10 @@ def maobizi_score_web():
     task_id = str(uuid.uuid4())
 
     # 初始化任务状态
-    task_status[task_id] = {
-        "status": "pending",
-        "message": "任务已创建，等待处理...",
-        "progress": 0,
-        "created_at": datetime.now().isoformat(),
-        "video_filename": None,
-        "video_url": None
-    }
+    TaskStatus.create_task_status(task_id,
+                      status="pending",
+                      message="任务已创建，等待处理...",
+                      progress=0)
 
     # 保存临时文件
     temp_dir = tempfile.mkdtemp()
@@ -396,7 +367,7 @@ def maobizi_score_web():
     status_url = f"http://8.215.28.241:721/status/{task_id}"
 
     # 更新任务状态，包含状态页面URL
-    task_status[task_id]["status_url"] = status_url
+    TaskStatus.update_task_status(task_id, status_url=status_url)
 
     # 启动后台任务
     executor.submit(process_maozibi_score_background, task_id, video0_path, video1_path, score)
@@ -486,14 +457,14 @@ def maozibi_img_web():
 
 
 @app.route('/status/<task_id>', methods=['GET', 'POST'])
-def get_task_status(task_id):
+def get_task_status_page(task_id):
     """获取任务状态页面"""
-    if task_id not in task_status:
+    if not TaskStatus.task_exists(task_id):
         abort(404, "任务不存在")
 
-    task = task_status[task_id]
+    task = TaskStatus.get_task_status(task_id)
     if request.method == 'POST':
-        success(task_status[task_id])
+        return success(task)
     else:
         return render_template('status.html', task=task, task_id=task_id)
 
@@ -541,7 +512,7 @@ def health_check():
         "output_dir": str(OUTPUT_DIR),
         "is_docker": os.path.exists('/.dockerenv'),
         "python_version": f"{os.sys.version_info.major}.{os.sys.version_info.minor}.{os.sys.version_info.micro}",
-        "active_tasks": len(task_status)
+        "active_tasks": TaskStatus.select().count()
     })
 
 
@@ -555,7 +526,7 @@ if __name__ == '__main__':
     print("启动Flask视频处理Web应用...")
     print("访问 http://localhost:5000 查看Web界面")
     print("访问 http://localhost:5000/health 查看系统状态")
-
+    create_tables()
     # 检查是否在Docker环境中运行
     is_docker = os.path.exists('/.dockerenv')
 
