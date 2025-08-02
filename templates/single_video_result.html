@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}单个视频上传结果{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>🎬 单个视频上传结果</h1>
+    
+    <div class="success">
+        <h3>✅ 上传成功！</h3>
+        <p><strong>任务ID:</strong> {{ result.task_id }}</p>
+        <p><strong>处理状态:</strong> 已完成</p>
+    </div>
+    
+    <div class="video-display">
+        <h3>🎥 上传的视频</h3>
+        <video controls>
+            <source src="{{ result.video_url }}" type="video/mp4">
+            您的浏览器不支持视频播放。
+        </video>
+        <div style="margin: 20px 0; text-align: center;">
+            <a href="{{ result.video_url }}" class="download-link" download>📥 下载视频</a>
+        </div>
+    </div>
+    
+    <div class="qr-code">
+        <h3>📱 扫描二维码访问视频</h3>
+        <div id="qr-video" data-qr-text="{{ result.video_url }}" data-qr-width="200" data-qr-height="200" class="qr-code-container"></div>
+        <p>扫描上方二维码可直接访问视频</p>
+        <button onclick="downloadQRCode('qr-video')" class="download-btn">下载二维码</button>
+    </div>
+    
+    <div class="result">
+        <h3>🔗 直接链接</h3>
+        <p><strong>视频链接:</strong> <a href="{{ result.video_url }}" target="_blank">{{ result.video_url }}</a></p>
+    </div>
+    
+    <div class="back-link">
+        <a href="{{ url_for('index') }}">← 返回首页</a>
+    </div>
+</div>
+{% endblock %}

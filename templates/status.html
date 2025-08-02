@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if task.status == 'completed' %}
+Processing Complete
+{% elif task.status == 'error' %}
+Processing Failed
+{% else %}
+Video Processing
+{% endif %}
+{% endblock %}
+
+{% block head %}
+{% if task.status not in ['completed', 'error'] %}
+<meta http-equiv="refresh" content="3">
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    {% if task.status == 'completed' %}
+        <!-- 处理完成状态 -->
+        <h1>Great Work!</h1>
+        <div class="result">
+            <div class="video-container">
+                <video controls>
+                    <source src="{{ url_for('get_output_file', filename=task.video_filename) }}" type="video/mp4">
+                    Your browser does not support video playback.
+                </source>
+                </video>
+            </div>
+            
+            <div style="margin: 20px 0; text-align: center;">
+                <a href="{{ url_for('get_output_file', filename=task.video_filename) }}" download="{{ task.video_filename }}" class="download-btn">
+                    📥 Download
+                </a>
+            </div>
+            
+            <div class="qr-section">
+                <h3>Share QR Code</h3>
+                <div id="qr-status-completed" data-qr-text="{{ request.url }}" data-qr-width="200" data-qr-height="200" class="qr-code-container"></div>
+            </div>
+            
+            
+            <p style="color: #6c757d; font-size: 14px; margin-top: 20px;">
+                Completion Time: {{ task.completed_at or 'N/A' }}
+            </p>
+        </div>
+        
+    {% elif task.status == 'error' %}
+        <!-- 错误状态 -->
+        <div class="error-icon">❌</div>
+        <h1>Video Processing Failed</h1>
+        <div class="result">
+            <h2>Error occurred during processing</h2>
+            <p><strong>Error Message:</strong> {{ task.message }}</p>
+            <div class="links">
+                <a href="{{ url_for('index') }}">Try Again</a>
+                <a href="{{ url_for('health_check') }}">Check System Status</a>
+            </div>
+        </div>
+        
+    {% else %}
+        <!-- 处理中状态 -->
+        <div class="processing-icon">⚙️</div>
+        <h1>✅ Task Created Successfully!</h1>
+        <div class="result">
+            <div class="status-info">
+                <p style="font-size: 18px; color: #856404;"><strong>Current Status:</strong> {{ task.message }}</p>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{ task.progress }}%;"></div>
+                    </div>
+                    <p><strong>Progress:</strong> {{ task.progress }}% Completed</p>
+                </div>
+            </div>
+            
+            <div class="qr-section">
+                <h3>📱 Scan QR Code to Check Status</h3>
+                <div id="qr-status-processing" data-qr-text="{{ request.url }}" data-qr-width="250" data-qr-height="250" class="qr-code-container"></div>
+                <p style="color: #28a745; font-weight: bold;">Scan the QR code to access the current status page!</p>
+            </div>
+            
+            <p style="color: #856404;">Page will refresh automatically every 3 seconds to update progress</p>
+            <p style="color: #6c757d; font-size: 14px;">
+                Task ID: {{ task_id }}<br>
+                Start Time: {{ task.created_at or 'N/A' }}
+            </p>
+        </div>
+        
+        <div class="links">
+            <a href="{{ url_for('index') }}">🏠 Back to Home</a>
+            <a href="javascript:location.reload()">🔄 Manual Refresh</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,8 @@
+flask
+werkzeug
+ffmpeg-python==0.2.0
+qrcode[pil]==7.4.2
+Pillow==10.1.0
+moviepy
+gunicorn==21.2.0
+python-dotenv==1.0.0

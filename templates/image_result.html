@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Maozibi图片上传结果{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>🖼️ Maozibi图片上传结果</h1>
+    
+    <div class="success">
+        <h3>✅ 上传成功！</h3>
+        <p><strong>任务ID:</strong> {{ result.task_id }}</p>
+        <p><strong>处理状态:</strong> 已完成</p>
+    </div>
+    
+    <div class="image-display">
+        <h3>📷 上传的图片</h3>
+        <img src="{{ result.image_url }}" alt="上传的图片">
+        <div style="margin: 20px 0; text-align: center;">
+            <a href="{{ result.image_url }}" class="download-link" download>📥 下载原图</a>
+        </div>
+    </div>
+    
+    <div class="qr-code">
+        <h3>📱 扫描二维码访问图片</h3>
+        <div id="qr-image" data-qr-text="{{ result.image_url }}" data-qr-width="200" data-qr-height="200" class="qr-code-container"></div>
+        <p>扫描上方二维码可直接访问图片</p>
+        <button onclick="downloadQRCode('qr-image')" class="download-btn">下载二维码</button>
+    </div>
+    
+    <div class="result">
+        <h3>🔗 直接链接</h3>
+        <p><strong>图片链接:</strong> <a href="{{ result.image_url }}" target="_blank">{{ result.image_url }}</a></p>
+    </div>
+    
+    <div class="back-link">
+        <a href="{{ url_for('index') }}">← 返回首页</a>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}🎬 视频处理工具{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>DIY VLOG GENERATOR</h1>
+    
+    <div class="mode-selector">
+        <button class="mode-btn active" onclick="switchMode('two')">两个视频处理</button>
+        <button class="mode-btn" onclick="switchMode('maozibi')">Maozibi画中画</button>
+        <button class="mode-btn" onclick="switchMode('maobizi-score')">Maobizi Score</button>
+        <button class="mode-btn" onclick="switchMode('single')">单个视频上传</button>
+        <button class="mode-btn" onclick="switchMode('img')">图片上传</button>
+    </div>
+    
+    <!-- 两个视频处理模式 -->
+    <div id="two-video-mode">
+        <div class="info">
+            <strong>功能说明：</strong>
+            <ul>
+                <li>上传两个视频文件</li>
+                <li>自动提取每个视频的前10秒和后10秒</li>
+                <li>将两个视频片段拼接成一个视频</li>
+                <li>添加背景音乐</li>
+                <li>支持多种视频格式：MP4, AVI, MOV, MKV等</li>
+            </ul>
+        </div>
+        
+        <form action="{{ url_for('process_videos_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+            <div class="upload-section">
+                <div class="form-group">
+                    <label for="video1">📹 选择第一个视频文件：</label>
+                    <input type="file" id="video1" name="video1" accept="video/*" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="video2">📹 选择第二个视频文件：</label>
+                    <input type="file" id="video2" name="video2" accept="video/*" required>
+                </div>
+                
+                <button type="submit" class="submit-btn">🚀 开始处理视频</button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Maozibi画中画模式 -->
+    <div id="maozibi-mode" class="hidden">
+        <div class="info">
+            <strong>Maozibi画中画功能说明：</strong>
+            <ul>
+                <li>上传两个视频文件（video0和video1）</li>
+                <li>video0作为底层视频</li>
+                <li>video1缩小后放置在右上角作为画中画</li>
+                <li>以较短的视频长度为准</li>
+                <li>使用jiggy boogy2.mp3作为背景音乐</li>
+                <li>支持多种视频格式：MP4, AVI, MOV, MKV等</li>
+            </ul>
+        </div>
+        
+        <form action="{{ url_for('maozibi_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+            <div class="upload-section">
+                <div class="form-group">
+                    <label for="video0_maozibi">📹 选择底层视频文件 (video0)：</label>
+                    <input type="file" id="video0_maozibi" name="video0" accept="video/*" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="video1_maozibi">📹 选择画中画视频文件 (video1)：</label>
+                    <input type="file" id="video1_maozibi" name="video1" accept="video/*" required>
+                </div>
+                
+                <button type="submit" class="submit-btn">🚀 开始Maozibi处理</button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Maobizi Score模式 -->
+    <div id="maobizi-score-mode" class="hidden">
+        <div class="info">
+            <strong>Maobizi Score功能说明：</strong>
+            <ul>
+                <li>上传两个视频文件（video0和video1）和一个分数</li>
+                <li>video0作为底层视频</li>
+                <li>video1缩小后放置在右上角作为画中画</li>
+                <li>分数显示在左上角</li>
+                <li>以较短的视频长度为准</li>
+                <li>使用jiggy boogy2.mp3作为背景音乐</li>
+                <li>支持多种视频格式：MP4, AVI, MOV, MKV等</li>
+            </ul>
+        </div>
+        
+        <form action="{{ url_for('maobizi_score_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+            <div class="upload-section">
+                <div class="form-group">
+                    <label for="video0_score">📹 选择底层视频文件 (video0)：</label>
+                    <input type="file" id="video0_score" name="video0" accept="video/*" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="video1_score">📹 选择画中画视频文件 (video1)：</label>
+                    <input type="file" id="video1_score" name="video1" accept="video/*" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="score_input">🎯 输入分数：</label>
+                    <input type="text" id="score_input" name="score" placeholder="例如：95分、A+、优秀等" required>
+                </div>
+                
+                <button type="submit" class="submit-btn">🚀 开始Maobizi Score处理</button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- 单个视频上传模式 -->
+    <div id="single-video-mode" class="hidden">
+        <div class="info">
+            <strong>单个视频上传功能说明：</strong>
+            <ul>
+                <li>上传一个视频文件</li>
+                <li>直接保存视频到服务器</li>
+                <li>生成视频访问链接</li>
+                <li>生成二维码用于快速访问视频</li>
+                <li>支持多种视频格式：MP4, AVI, MOV, MKV等</li>
+                <li>无需任何处理，即时生成二维码</li>
+            </ul>
+        </div>
+        
+        <form action="{{ url_for('process_single_video_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+            <div class="upload-section">
+                <div class="form-group">
+                    <label for="single_video">🎬 选择视频文件：</label>
+                    <input type="file" id="single_video" name="video" accept="video/*" required>
+                </div>
+                
+                <button type="submit" class="submit-btn">🚀 上传视频并生成二维码</button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- 图片上传模式 -->
+    <div id="img-mode" class="hidden">
+        <div class="info">
+            <strong>图片上传功能说明：</strong>
+            <ul>
+                <li>上传一张图片文件</li>
+                <li>自动保存图片到服务器</li>
+                <li>生成图片访问链接</li>
+                <li>生成二维码用于快速访问图片</li>
+                <li>支持多种图片格式：JPG, PNG, GIF, BMP等</li>
+            </ul>
+        </div>
+        
+        <form action="{{ url_for('maozibi_img_web') }}" method="post" enctype="multipart/form-data" onsubmit="showLoading()">
+            <div class="upload-section">
+                <div class="form-group">
+                    <label for="image_upload">🖼️ 选择图片文件：</label>
+                    <input type="file" id="image_upload" name="image" accept="image/*" required>
+                </div>
+                
+                <button type="submit" class="submit-btn">🚀 上传图片并生成二维码</button>
+            </div>
+        </form>
+    </div>
+    
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p>正在处理，请稍候...</p>
+    </div>
+</div>
+{% endblock %}
