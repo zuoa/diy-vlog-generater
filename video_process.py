@@ -419,7 +419,7 @@ class VideoProcessor:
             await self.extract_video_segment(video2_path, segment2_path, start_time2, segment_duration2)
             
             output_filename = f"merged_{unique_id}.mp4"
-            output_path = OUTPUT_DIR / output_filename
+            output_path = f'{OUTPUT_DIR}/{output_filename}'
             
             await self.concatenate_videos(segment1_path, segment2_path, str(output_path))
             
@@ -477,7 +477,7 @@ class VideoProcessor:
             await self.create_picture_in_picture(trimmed_video0_path, trimmed_video1_path, pip_path)
             
             output_filename = f"maozibi_{unique_id}.mp4"
-            output_path = OUTPUT_DIR / output_filename
+            output_path = f'{OUTPUT_DIR}/{output_filename}'
             
             await self.add_background_music_maozibi(pip_path, str(output_path))
             
@@ -539,7 +539,7 @@ class VideoProcessor:
             await self.create_picture_in_picture_with_score(trimmed_video0_path, trimmed_video1_path, pip_path, score)
             
             output_filename = f"maozibi_score_{unique_id}.mp4"
-            output_path = OUTPUT_DIR / output_filename
+            output_path = f'{OUTPUT_DIR}/{output_filename}'
             
             await self.add_background_music_maozibi(pip_path, str(output_path))
             

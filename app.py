@@ -382,7 +382,7 @@ def process_single_video_web():
     # 获取文件扩展名
     file_extension = video.filename.split('.')[-1] if '.' in video.filename else 'mp4'
     video_filename = f"single_video_{task_id}.{file_extension}"
-    video_path = OUTPUT_DIR / video_filename
+    video_path = f'{OUTPUT_DIR}/{video_filename}'
 
     # 保存视频文件
     video.save(str(video_path))
@@ -425,7 +425,7 @@ def maozibi_img_web():
 
     file_extension = image.filename.rsplit('.', 1)[-1] if '.' in image.filename else 'jpg'
     image_filename = f"maozibi_img_{task_id}.{file_extension}"
-    image_path = OUTPUT_DIR / image_filename
+    image_path = f'{OUTPUT_DIR}/{image_filename}'
 
     try:
         image_data = image.read()
@@ -482,10 +482,10 @@ def get_task_status_page(task_id):
 @app.route('/output/<filename>')
 def get_output_file(filename):
     """获取输出文件（视频、二维码等）"""
-    file_path = OUTPUT_DIR / filename
-    if not file_path.exists():
+    file_path = f'{OUTPUT_DIR}/{filename}'
+    if not os.path.exists(file_path):
         abort(404, "文件不存在")
-    return send_file(str(file_path))
+    return send_file(file_path)
 
 
 @app.route('/health')
