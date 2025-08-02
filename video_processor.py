@@ -6,19 +6,21 @@ from pathlib import Path
 import numpy as np
 from moviepy import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip, concatenate_videoclips, concatenate_audioclips, ColorClip
 
+from ajlog import logger
+
 try:
     import cv2
 except ImportError:
     cv2 = None
-    print("警告: cv2未安装，缩放效果将使用回退方案")
+    logger.warn("警告: cv2未安装，缩放效果将使用回退方案")
 
 # 设置 MoviePy 配置以避免 ffmpeg 问题
 try:
     from moviepy.config import check_ffmpeg
 
-    print("MoviePy ffmpeg 检查:", check_ffmpeg())
+    logger.info("MoviePy ffmpeg 检查:", check_ffmpeg())
 except ImportError:
-    print("无法导入 MoviePy 配置检查")
+    logger.warn("无法导入 MoviePy 配置检查")
 
 
 class VideoProcessor:
@@ -40,14 +42,14 @@ class VideoProcessor:
             result = subprocess.run(['ffmpeg', '-version'],
                                     capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                print("✓ FFmpeg 可用")
+                logger.info("✓ FFmpeg 可用")
                 return True
             else:
-                print("⚠ FFmpeg 不可用 - 可能会遇到视频处理问题")
+                logger.warn("⚠ FFmpeg 不可用 - 可能会遇到视频处理问题")
                 return False
         except Exception as e:
-            print(f"⚠ 无法检查 FFmpeg: {e}")
-            print("如果遇到视频处理问题，请确保已安装 FFmpeg")
+            logger.warn(f"⚠ 无法检查 FFmpeg: {e}")
+            logger.warn("如果遇到视频处理问题，请确保已安装 FFmpeg")
             return False
 
     def create_pip_video(self, main_video_path, pip_video_path, output_path, text=None, text_font_size=16, text_position=(0, 0), pip_position='top-right', pip_scale=0.25):
@@ -121,7 +123,7 @@ class VideoProcessor:
 
             # 保存最终视频
             final_clip.write_videofile(output_path, logger=None)
-            print(f"视频处理完成，保存至: {output_path}")
+            logger.info(f"视频处理完成，保存至: {output_path}")
 
             # 清理资源
             main_video.close()
@@ -129,7 +131,7 @@ class VideoProcessor:
             final_clip.close()
 
         except Exception as e:
-            print(f"视频处理出错: {str(e)}")
+            logger.warn(f"视频处理出错: {str(e)}")
 
 
 
@@ -195,15 +197,15 @@ class VideoProcessor:
             # 先保存没有音频的视频
             temp_video_path = output_path.replace('.mp4', '_temp_no_audio.mp4')
             try:
-                print("写入临时视频（无音频）...")
+                logger.info("写入临时视频（无音频）...")
                 final_video.write_videofile(
                     temp_video_path,
                     logger=None,
                     audio=False  # 明确禁用音频
                 )
-                print("临时视频写入成功!")
+                logger.info("临时视频写入成功!")
             except Exception as write_error:
-                print(f"临时视频写入失败: {write_error}")
+                logger.error(f"临时视频写入失败: {write_error}")
                 raise
 
             # 使用 FFmpeg 添加背景音乐
@@ -230,7 +232,7 @@ class VideoProcessor:
             except Exception as cleanup_error:
                 print(f"清理资源时出错: {cleanup_error}")
 
-            print(f"视频处理完成，保存至: {output_path}")
+            logger.info(f"视频处理完成，保存至: {output_path}")
 
         except Exception as e:
             print(e)
@@ -254,7 +256,7 @@ class VideoProcessor:
         for i, beat_time in enumerate(beat_times):
             # 确保时间在视频范围内
             if beat_time >= video.duration:
-                print(f"警告: 卡点时间 {beat_time}s 超出视频长度 {video.duration}s")
+                logger.info(f"警告: 卡点时间 {beat_time}s 超出视频长度 {video.duration}s")
                 continue
 
             # 确保截取的片段长度与显示时长一致，避免黑帧
@@ -266,7 +268,7 @@ class VideoProcessor:
             if end_time - start_time < self.beat_frame_duration:
                 # 如果到视频末尾长度不够，向前调整起始时间
                 start_time = max(0, end_time - self.beat_frame_duration)
-                print(f"调整卡点 {i + 1} 时间范围: {start_time:.2f}s - {end_time:.2f}s")
+                logger.info(f"调整卡点 {i + 1} 时间范围: {start_time:.2f}s - {end_time:.2f}s")
 
             try:
                 frame_clip = video.subclipped(start_time, end_time)
@@ -274,7 +276,7 @@ class VideoProcessor:
                 try:
                     frame_clip = video.subclip(start_time, end_time)
                 except AttributeError:
-                    print(f"错误: 无法截取视频片段，跳过卡点 {beat_time}s")
+                    logger.warn(f"错误: 无法截取视频片段，跳过卡点 {beat_time}s")
                     continue
 
             # 强制调整到统一尺寸
@@ -291,7 +293,7 @@ class VideoProcessor:
             if abs(actual_duration - self.beat_frame_duration) > 0.01:  # 允许小的误差
                 try:
                     frame_clip = frame_clip.with_duration(self.beat_frame_duration)
-                    print(f"调整卡点 {i + 1} 持续时间: {actual_duration:.2f}s -> {self.beat_frame_duration}s")
+                    logger.info(f"调整卡点 {i + 1} 持续时间: {actual_duration:.2f}s -> {self.beat_frame_duration}s")
                 except AttributeError:
                     try:
                         frame_clip = frame_clip.set_duration(self.beat_frame_duration)
@@ -304,7 +306,7 @@ class VideoProcessor:
                 frame_clip = self._add_simple_zoom_effect(frame_clip)
 
             beat_clips.append(frame_clip)
-            print(f"成功创建卡点 {i + 1}: {beat_time}s, 显示时长: {self.beat_frame_duration}s")
+            logger.info(f"成功创建卡点 {i + 1}: {beat_time}s, 显示时长: {self.beat_frame_duration}s")
 
         return beat_clips
 
