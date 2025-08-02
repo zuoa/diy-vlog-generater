@@ -3,7 +3,7 @@
 Flask Web应用 - 视频处理工具
 从video_process.py拆分出来的Web界面部分
 """
-
+import json
 import os
 import tempfile
 import uuid
@@ -153,34 +153,18 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
         # 更新任务状态为处理中
         TaskStatus.update_task_status(task_id, status="processing", message="正在处理maozibi_score视频...", progress=20)
 
-        processor = VideoProcessor()
+        processor = VP()
 
-        # 检查ffmpeg
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        if not loop.run_until_complete(processor.check_ffmpeg()):
-            TaskStatus.update_task_status(task_id, status="error", message="FFmpeg未安装或不可用")
-            return
-
-        TaskStatus.update_task_status(task_id, progress=40, message="正在分析视频...")
-
-        # 读取视频数据
-        with open(video0_path, 'rb') as f:
-            video0_data = f.read()
-        with open(video1_path, 'rb') as f:
-            video1_data = f.read()
-
-        # 处理视频
-        output_path, output_filename = loop.run_until_complete(
-            processor.process_maozibi_score_videos(video0_data, video1_data, score)
-        )
 
         TaskStatus.update_task_status(task_id, progress=80, message="正在生成最终文件...")
 
+        output_filename = f"mbz_processed_video_{task_id}.mp4"
+        output_filepath = f"output/{output_filename}"
+
+        processor.process_maozibi_score_videos(video0_path, video1_path, score)
+
         # 生成视频访问URL
-        video_url = f"http://8.215.28.241:721/output/{output_filename}"
+        video_url = f"{APP_HOST}/output/{output_filename}"
 
         # 更新任务状态为完成
         TaskStatus.update_task_status(task_id,
@@ -206,7 +190,7 @@ def process_maozibi_score_background(task_id: str, video0_path: str, video1_path
             os.remove(video1_path)
 
 
-@app.route('/')
+@app.route('/tools')
 def index():
     """主页"""
     return render_template('index.html')
@@ -220,6 +204,8 @@ def process_videos_web():
         abort(400, "缺少视频文件")
 
     beat_times = request.form.get('times')
+    if beat_times:
+        beat_times = json.loads(beat_times)
 
     video1 = request.files['video1']
     video2 = request.files['video2']
@@ -302,7 +288,7 @@ def maozibi_web():
     video1.save(video1_path)
 
     # 生成二维码URL（指向任务状态页面）
-    status_url = f"http://8.215.28.241:721/status/{task_id}"
+    status_url = f"{APP_HOST}/status/{task_id}"
 
     # 更新任务状态，包含状态页面URL
     TaskStatus.update_task_status(task_id, status_url=status_url)
@@ -355,7 +341,7 @@ def maobizi_score_web():
     video1.save(video1_path)
 
     # 生成二维码URL（指向任务状态页面）  
-    status_url = f"http://8.215.28.241:721/status/{task_id}"
+    status_url = f"{APP_HOST}/status/{task_id}"
 
     # 更新任务状态，包含状态页面URL
     TaskStatus.update_task_status(task_id, status_url=status_url)
